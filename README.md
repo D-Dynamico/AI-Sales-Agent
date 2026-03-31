@@ -1,4 +1,4 @@
-# ⚗️ AI Sales Outreach Agent
+# AI Sales Outreach Agent
 
 An autonomous AI agent that researches B2B leads in real-time, drafts hyper-personalised
 cold emails, and logs everything — with zero human input per lead.
