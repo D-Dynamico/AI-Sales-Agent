@@ -138,8 +138,6 @@ Statuses: `SENT` · `DRY_RUN` · `ENRICH_ERROR` · `DRAFT_ERROR` · `SEND_ERROR`
 
 - **`days=30` on Tavily** — filters search results to last 30 days so research is always current, not cached old news
 - **Two-step pipeline** — enrichment and drafting are separate so each can fail/retry independently
-- **`--dry-run` flag** — safe to test without sending a single real email
-- **`--resume` flag** — idempotent, safe to re-run after crashes without double-sending
 - **Rate limiting** — 60s default between sends to avoid spam filters
 - **Modular** — swap Groq → OpenAI, Tavily → SerpAPI, SendGrid → SMTP with one-line changes
 
