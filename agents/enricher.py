@@ -8,12 +8,13 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 SYSTEM_PROMPT = """You are a B2B sales researcher. Find 2-3 specific, recent facts 
-about a company and the lead's role useful for personalising a cold email.
-Focus on: recent news, funding, product launches, or role-specific challenges.
+about a company and person useful for personalising a cold email.
+Focus ONLY on news from 2025-2026: funding rounds, product launches, hiring, expansions.
+If you only have old information, explicitly say so — do not present old news as recent.
 Return ONLY a concise 3-5 sentence brief. No bullet points. No fluff."""
 
 def enrich_lead(lead: dict) -> str:
-    search = TavilySearch(max_results=3, topic="news", search_depth="advanced")
+    search = TavilySearch(max_results=3,days=30, topic="news", search_depth="advanced")
     query = f"{lead.get('company')} {lead.get('role')} recent news 2026"
     results = search.invoke(query)
 
