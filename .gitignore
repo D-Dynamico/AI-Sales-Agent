@@ -210,3 +210,6 @@ __marimo__/
 # Local working notes — not for the repo
 session.md
 plan.md
+
+# Generated research cache
+data/research_cache/

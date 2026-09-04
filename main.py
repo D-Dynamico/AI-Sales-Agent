@@ -6,7 +6,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from agents.enricher import enrich_lead
+from agents.icp import passes_icp
 from agents.pipeline import draft_with_gate
+from config import ICP_MIN_SCORE
 from tools.sender import send_email
 from tools.logger import log_result, already_sent
 
@@ -26,9 +28,10 @@ def load_leads():
         return list(reader)
 
 
-def run_pipeline(dry_run=False, resume=False, delay=60):
+def run_pipeline(dry_run=False, resume=False, delay=60, icp_threshold=ICP_MIN_SCORE):
     leads = load_leads()
-    print(f"\nStarting pipeline for {len(leads)} leads | dry_run={dry_run} | resume={resume}\n")
+    print(f"\nStarting pipeline for {len(leads)} leads | dry_run={dry_run} | "
+          f"resume={resume} | icp>={icp_threshold}\n")
 
     for i, lead in enumerate(leads):
         email = lead.get("email", "").strip()
@@ -40,6 +43,15 @@ def run_pipeline(dry_run=False, resume=False, delay=60):
 
         if resume and already_sent(email, OUTPUT_LOG):
             print(f"[{i+1}] Skipping {name} - already sent")
+            continue
+
+        # Fit check first: it's free and rule-based, so a poor-fit lead costs nothing
+        # rather than a full research-and-draft cycle.
+        fits, icp = passes_icp(lead, icp_threshold)
+        if not fits:
+            print(f"[{i+1}] Skipping {name} - ICP {icp.score} ({icp.summary})")
+            log_result(lead, draft="", status="ICP_SKIPPED", log_path=OUTPUT_LOG,
+                       critique=f"ICP {icp.score}: {icp.summary}")
             continue
 
         print(f"[{i+1}] Enriching lead: {name} @ {lead.get('company', '')}")
@@ -99,6 +111,10 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Print emails instead of sending")
     parser.add_argument("--resume", action="store_true", help="Skip leads already in output log")
     parser.add_argument("--delay", type=int, default=60, help="Seconds between sends (default: 60)")
+    parser.add_argument("--icp-threshold", type=float, default=ICP_MIN_SCORE,
+                        help=f"Minimum ICP score to research a lead (default: {ICP_MIN_SCORE}; "
+                             f"use 0 to disable skipping)")
     args = parser.parse_args()
 
-    run_pipeline(dry_run=args.dry_run, resume=args.resume, delay=args.delay)
+    run_pipeline(dry_run=args.dry_run, resume=args.resume, delay=args.delay,
+                 icp_threshold=args.icp_threshold)

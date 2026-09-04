@@ -24,3 +24,14 @@ CRITIC_MODEL = os.getenv("GROQ_CRITIC_MODEL", "openai/gpt-oss-120b")
 
 # Drafts allowed per lead before it goes to a human: the first draft plus one rewrite.
 MAX_DRAFT_ATTEMPTS = int(os.getenv("MAX_DRAFT_ATTEMPTS", "2"))
+
+# Research is cached per company, so a batch of leads at one firm costs one pass. Set
+# USE_RESEARCH_CACHE=0 to force fresh lookups (e.g. when evaluating enrichment changes —
+# a cache hit would otherwise serve results from the previous prompt version).
+USE_RESEARCH_CACHE = os.getenv("USE_RESEARCH_CACHE", "1") != "0"
+ENRICHMENT_TTL_SECONDS = int(os.getenv("ENRICHMENT_TTL_SECONDS", str(7 * 24 * 60 * 60)))
+
+# Minimum ICP score for a lead to be worth spending tokens on. Deliberately permissive by
+# default: it drops clear mismatches (interns, missing company) rather than making fine
+# judgement calls, because a wrongly skipped lead is invisible unless you go looking.
+ICP_MIN_SCORE = float(os.getenv("ICP_MIN_SCORE", "0.3"))

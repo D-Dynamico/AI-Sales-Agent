@@ -22,8 +22,15 @@ Built with Python, LangChain, GPT-OSS on Groq, and Tavily Search.
 leads.csv
     │
     ▼
-Enrichment Agent  ──→  Tavily Search (last 30 days)
-    │                  GPT-OSS 120B via Groq
+ICP filter        ──→  Rule-based, no tokens. Poor-fit leads skipped before spending
+    │
+    ▼
+Planner           ──→  Picks 3 lookup angles from the role (funding, hiring, launches...)
+    │
+    ▼
+Enrichment Agent  ──→  Those angles searched in parallel via Tavily (last 30 days)
+    │                  Cached per company — 10 leads at one firm = 1 research pass
+    │                  GPT-OSS 120B structures them into trigger_events + confidence
     │                  Returns: research brief + raw source snippets
     ▼
 Email Drafter     ──→  GPT-OSS 120B via Groq
@@ -64,11 +71,14 @@ sales-agent/
 ├── requirements.txt
 ├── .env.example
 ├── agents/
-│   ├── enricher.py      ← LangChain + Tavily research, returns brief + raw sources
+│   ├── enricher.py      ← Plans, searches in parallel, structures + caches research
+│   ├── planner.py       ← Picks lookup angles per role; parallel execution + budget
+│   ├── icp.py           ← Rule-based fit scoring, runs before any tokens are spent
+│   ├── cache.py         ← Per-company research cache (7-day TTL)
 │   ├── drafter.py       ← LLM email drafting + rewrite-on-critique chain
 │   ├── critic.py        ← Grounding gate: claim extraction + source verification
 │   ├── pipeline.py      ← draft → critique → rewrite loop (shared by CLI, UI, evals)
-│   └── schemas.py       ← FactualClaim / CriticVerdict
+│   └── schemas.py       ← FactualClaim / CriticVerdict / ResearchResult
 ├── tools/
 │   ├── sender.py        ← SendGrid / SMTP sender
 │   └── logger.py        ← CSV logger with duplicate detection
@@ -134,7 +144,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
-80 tests, no network calls — every LLM and search client is mocked, so the suite is free,
+145 tests, no network calls — every LLM and search client is mocked, so the suite is free,
 offline and runs in about a second. That's deliberate: the live models sit behind a 200k
 tokens-per-day cap, and a suite that called them would compete with the eval harness for the
 same budget. Tests and evals answer different questions — tests verify logic, evals score
@@ -177,7 +187,7 @@ timestamp,name,role,company,email,status,draft_preview
 2026-03-31T10:23:01Z,Priya Sharma,Head of Sales,Razorpay,...,SENT,"Subject: ..."
 ```
 
-Statuses: `SENT` · `DRY_RUN` · `NEEDS_REVIEW` · `ENRICH_ERROR` · `DRAFT_ERROR` · `SEND_ERROR`
+Statuses: `SENT` · `DRY_RUN` · `NEEDS_REVIEW` · `ICP_SKIPPED` · `ENRICH_ERROR` · `DRAFT_ERROR` · `SEND_ERROR`
 
 `NEEDS_REVIEW` rows carry the critic's objections in the `critique` column, so the review
 queue can be worked straight from the CSV. They are never sent.
@@ -193,6 +203,11 @@ queue can be worked straight from the CSV. They are never sent.
 - **The critic checks drafts against sources, not against the research brief** — so it catches
   errors the *enricher* introduced too, not just the drafter's. It has already caught a bad
   unit conversion (Rs 12,626 crore restated as "Rs 12.6 billion", off by 10x)
+- **Research is cached per company, not per lead** — ten contacts at one firm cost one
+  research pass. Not just tidiness: the models sit behind a 200k tokens-per-day cap
+- **The ICP filter and lookup planner are rule-based, not LLM calls** — both exist to spend
+  tokens better, so paying a model call to run them would defeat the point. Rules are also
+  inspectable, which matters when the decision is "never contact this person"
 - **`days=30` on Tavily** — filters search results to last 30 days so research is always current, not cached old news
 - **Two-step pipeline** — enrichment and drafting are separate so each can fail/retry independently
 - **Rate limiting** — 60s default between sends to avoid spam filters

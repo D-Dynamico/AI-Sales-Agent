@@ -8,6 +8,20 @@ the eval harness for the same budget.
 
 import pytest
 
+from agents import cache
+
+
+@pytest.fixture(autouse=True)
+def isolate_research_cache(tmp_path, monkeypatch):
+    """Point the research cache at a temp directory for every test, always.
+
+    Found the hard way: a test that mocked the search client still came back with nine real
+    sources, because `enrich_lead` hit the on-disk cache from an earlier live run before it
+    ever reached the mock. Tests that silently read production state are worse than no tests
+    — they pass for the wrong reason, and they'd fail on a machine with a cold cache.
+    """
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "research_cache")
+
 
 class FakeChain:
     """Stands in for a LangChain `prompt | llm | parser` chain.

@@ -69,9 +69,9 @@ def test_no_sources_short_circuits_without_calling_the_llm(monkeypatch, lead):
                         lambda **kw: type("S", (), {"invoke": lambda self, q: {"results": []}})())
 
     def explode(*a, **k):
-        raise AssertionError("ChatGroq must not be constructed when there are no sources")
+        raise AssertionError("the model must not be called when there are no sources")
 
-    monkeypatch.setattr(enricher, "ChatGroq", explode)
+    monkeypatch.setattr(enricher, "_structure", explode)
 
     brief, sources = enricher.enrich_lead(lead)
     assert brief == NO_RESEARCH
