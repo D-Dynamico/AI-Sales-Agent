@@ -3,7 +3,7 @@
 An autonomous AI agent that researches B2B leads in real-time, drafts hyper-personalised
 cold emails, and logs everything — with zero human input per lead.
 
-Built with Python, LangChain, LLaMA 3.1, and Tavily Search.
+Built with Python, LangChain, GPT-OSS on Groq, and Tavily Search.
 
 🔗 **Live Demo**: [ai-sales-agent.streamlit.app](https://ai-sales-agent-3texcwappcokvpr7afudyav.streamlit.app/)
 
@@ -12,7 +12,7 @@ Built with Python, LangChain, LLaMA 3.1, and Tavily Search.
 ## What it does
 
 1. **Researches each lead** — searches the web for recent company news, funding, product launches, and role-specific context (last 30 days only)
-2. **Drafts a personalised email** — uses LLaMA 3.1 to write a <120-word cold email grounded in that research
+2. **Drafts a personalised email** — uses an LLM on Groq to write a <120-word cold email grounded in that research
 3. **Logs everything** — saves status, draft preview, and timestamps to a CSV
 4. **Sends via SendGrid or SMTP** — with rate limiting and resume support
 
@@ -23,10 +23,10 @@ leads.csv
     │
     ▼
 Enrichment Agent  ──→  Tavily Search (last 30 days)
-    │                  LLaMA 3.1 8B via Groq
+    │                  GPT-OSS 20B via Groq
     │                  Returns: 3-5 sentence research brief
     ▼
-Email Drafter     ──→  LLaMA 3.1 8B via Groq
+Email Drafter     ──→  GPT-OSS 20B via Groq
     │                  Returns: subject line + <120 word email
     ▼
 Sender            ──→  SendGrid (primary) / SMTP (fallback)
@@ -41,7 +41,7 @@ Logger            ──→  output_log.csv
 
 | Layer | Tool |
 |---|---|
-| LLM | LLaMA 3.1 8B Instant via Groq |
+| LLM | GPT-OSS 20B via Groq (model id set in `config.py`, overridable via `GROQ_MODEL`) |
 | Orchestration | LangChain |
 | Web search | Tavily Search (30-day recency filter) |
 | Email delivery | SendGrid / Gmail SMTP |
@@ -56,6 +56,7 @@ Logger            ──→  output_log.csv
 sales-agent/
 ├── app.py               ← Streamlit UI
 ├── main.py              ← CLI runner
+├── config.py            ← Model ids (env-overridable)
 ├── requirements.txt
 ├── .env.example
 ├── agents/
@@ -64,8 +65,16 @@ sales-agent/
 ├── tools/
 │   ├── sender.py        ← SendGrid / SMTP sender
 │   └── logger.py        ← CSV logger with duplicate detection
+├── eval/
+│   ├── runner.py        ← Runs the golden set, scores every draft
+│   ├── checks.py        ← Deterministic checks (words, subject, clichés, CTA)
+│   ├── llm_judge.py     ← LLM judge for personalisation quality
+│   ├── report.py        ← Aggregation + history.csv
+│   ├── prompt_version.py← Hand-bumped version label for score comparison
+│   └── history.csv      ← One row per eval run
 └── data/
     ├── leads.csv        ← Input leads
+    ├── golden_leads.csv ← 25-lead fixed set for evals
     └── output_log.csv   ← Auto-created on first run
 ```
 
@@ -110,6 +119,22 @@ python main.py --resume
 # Custom delay between sends
 python main.py --delay 90
 ```
+
+### Evals
+
+Every prompt change should be measured, not eyeballed. The harness runs a fixed 25-lead
+golden set through enrichment and drafting (never sends), scores each draft, and appends a
+row to `eval/history.csv` tagged with the current `PROMPT_VERSION`.
+
+```bash
+python -m eval.runner              # full golden set
+python -m eval.runner --limit 5    # quick pass while iterating
+python -m eval.runner --no-judge   # deterministic checks only, no LLM judge cost
+```
+
+Scored on: word count ≤120, subject line present, no banned phrases, exactly one CTA, plus
+an LLM judge rating personalisation specificity 1-5. Bump `PROMPT_VERSION` in
+`eval/prompt_version.py` whenever you edit a system prompt, so history rows stay comparable.
 
 ---
 

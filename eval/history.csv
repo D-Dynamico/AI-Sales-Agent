@@ -1,0 +1,3 @@
+timestamp,prompt_version,n_leads,n_errors,word_count_pass_rate,subject_pass_rate,cliche_pass_rate,cta_pass_rate,judge_mean,grounded_claim_rate,mean_latency_s
+2026-09-04T18:20:38Z,v1,25,8,1.0,0.941,1.0,0.941,4.12,,13.9
+2026-09-04T18:26:55Z,v2,25,0,1.0,0.96,1.0,0.92,2.64,,12.4

@@ -3,15 +3,28 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
+from config import PIPELINE_MODEL
 
-SYSTEM_PROMPT = """You write hyper-personalised cold emails on behalf of Alchemyst AI — 
+
+# Single source of truth: the prompt rule below is generated from this list, and
+# eval/checks.py greps drafts for the same strings.
+BANNED_PHRASES = [
+    "I hope this email finds you well",
+    "I came across your profile",
+    "I wanted to reach out",
+    "touch base",
+    "synergy",
+]
+
+_BANNED_FOR_PROMPT = ", ".join(f'"{phrase}"' for phrase in BANNED_PHRASES)
+
+SYSTEM_PROMPT = f"""You write hyper-personalised cold emails on behalf of Alchemyst AI —
 an AI infrastructure company that helps B2B teams automate sales, marketing, and ops workflows.
 
 Rules (non-negotiable):
 1. Max 120 words. Brevity is respect.
 2. Open with a specific observation about the company or person — never a generic opener.
-3. Never say: "I hope this email finds you well", "I came across your profile", 
-   "I wanted to reach out", "touch base", or "synergy".
+3. Never say: {_BANNED_FOR_PROMPT}.
 4. One clear, low-friction CTA (e.g. "Worth a 15-min call this week?")
 5. No bullet points. Flowing prose only.
 6. Sign off as: Alex, Alchemyst AI
@@ -36,7 +49,7 @@ Write the subject line first, then the email body.
 
 def build_drafter():
     llm = ChatGroq(
-        model="llama-3.1-8b-instant",
+        model=PIPELINE_MODEL,
         temperature=0.7,
         api_key=os.getenv("GROQ_API_KEY"),
     )

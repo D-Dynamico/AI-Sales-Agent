@@ -7,10 +7,21 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-SYSTEM_PROMPT = """You are a B2B sales researcher. Find 2-3 specific, recent facts 
-about a company and person useful for personalising a cold email.
-Focus ONLY on news from 2025-2026: funding rounds, product launches, hiring, expansions.
-If you only have old information, explicitly say so — do not present old news as recent.
+from config import PIPELINE_MODEL
+
+# Phrased as "summarise what you are given", never "find" or "search" — the web search has
+# already happened in Tavily by the time this prompt runs, and research-flavoured wording
+# makes tool-capable models try to call a search tool of their own, which the API rejects.
+SYSTEM_PROMPT = """You summarise pre-fetched search results for a B2B sales team.
+
+You have no tools and no ability to search. Work only from the search results provided
+in the message. Do not attempt to look anything up.
+
+From those results, pick the 2-3 most specific and most recent facts about the company or
+person that would be useful for personalising a cold email — funding rounds, product
+launches, hiring, expansions. Prefer 2025-2026 items.
+If the results contain only old or irrelevant information, say so plainly — never present
+old news as recent, and never invent a fact that is not in the results.
 Return ONLY a concise 3-5 sentence brief. No bullet points. No fluff."""
 
 def enrich_lead(lead: dict) -> str:
@@ -21,7 +32,7 @@ def enrich_lead(lead: dict) -> str:
     context = "\n".join([r["content"] for r in results if "content" in r])
 
     llm = ChatGroq(
-        model="llama-3.1-8b-instant",
+        model=PIPELINE_MODEL,
         temperature=0.2,
     )
 
