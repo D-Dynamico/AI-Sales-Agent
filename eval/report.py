@@ -4,11 +4,15 @@ import csv
 from datetime import datetime, timezone
 from pathlib import Path
 
+from config import JUDGE_MODEL, PIPELINE_MODEL
+
 HISTORY_FILE = Path("eval/history.csv")
 
 FIELDNAMES = [
     "timestamp",
     "prompt_version",
+    "pipeline_model",
+    "judge_model",
     "n_leads",
     "n_errors",
     "word_count_pass_rate",
@@ -37,6 +41,8 @@ def summarise(results: list[dict], prompt_version: str) -> dict:
     return {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "prompt_version": prompt_version,
+        "pipeline_model": PIPELINE_MODEL,
+        "judge_model": JUDGE_MODEL,
         "n_leads": len(results),
         "n_errors": len(results) - len(scored),
         "word_count_pass_rate": _rate(scored, "word_count_pass"),
@@ -63,6 +69,7 @@ def append_history(summary: dict):
 def print_report(results: list[dict], summary: dict):
     print("\n" + "=" * 72)
     print(f"EVAL REPORT — prompt {summary['prompt_version']} — {summary['n_leads']} leads")
+    print(f"pipeline: {summary['pipeline_model']}  |  judge: {summary['judge_model']}")
     print("=" * 72)
 
     print(f"\n{'lead':<28} {'words':>6} {'subj':>5} {'clich':>6} {'cta':>4} {'judge':>6}")

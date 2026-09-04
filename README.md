@@ -23,10 +23,10 @@ leads.csv
     │
     ▼
 Enrichment Agent  ──→  Tavily Search (last 30 days)
-    │                  GPT-OSS 20B via Groq
+    │                  GPT-OSS 120B via Groq
     │                  Returns: 3-5 sentence research brief
     ▼
-Email Drafter     ──→  GPT-OSS 20B via Groq
+Email Drafter     ──→  GPT-OSS 120B via Groq
     │                  Returns: subject line + <120 word email
     ▼
 Sender            ──→  SendGrid (primary) / SMTP (fallback)
@@ -41,7 +41,7 @@ Logger            ──→  output_log.csv
 
 | Layer | Tool |
 |---|---|
-| LLM | GPT-OSS 20B via Groq (model id set in `config.py`, overridable via `GROQ_MODEL`) |
+| LLM | GPT-OSS 120B via Groq (model id in `config.py`, overridable via `GROQ_MODEL`) |
 | Orchestration | LangChain |
 | Web search | Tavily Search (30-day recency filter) |
 | Email delivery | SendGrid / Gmail SMTP |
@@ -165,5 +165,10 @@ Statuses: `SENT` · `DRY_RUN` · `ENRICH_ERROR` · `DRAFT_ERROR` · `SEND_ERROR`
 - **Two-step pipeline** — enrichment and drafting are separate so each can fail/retry independently
 - **Rate limiting** — 60s default between sends to avoid spam filters
 - **Modular** — swap Groq → OpenAI, Tavily → SerpAPI, SendGrid → SMTP with one-line changes
+- **GPT-OSS 120B over the 20B** — every Groq model here shares one 8000 TPM ceiling, so
+  tokens-per-draft sets throughput, not the rate limit. The 20B spends ~89% of its output on
+  reasoning it discards (1536 tokens/draft vs the 120B's 1125), making the *larger* model both
+  cheaper and better here. `qwen3.8-27b` is the volume option — 478 tokens/draft and ~3x the
+  throughput, but weaker personalisation; set `GROQ_MODEL` to switch, no code change needed
 
 ---
