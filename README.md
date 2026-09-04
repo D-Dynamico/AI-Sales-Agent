@@ -79,6 +79,7 @@ sales-agent/
 │   ├── cache.py         ← Per-company research cache (7-day TTL)
 │   ├── drafter.py       ← LLM email drafting + rewrite-on-critique chain
 │   ├── critic.py        ← Grounding gate: claim extraction + source verification
+│   ├── errors.py        ← User-safe error messages; redacts ids/keys from logs
 │   ├── pipeline.py      ← draft → critique → rewrite loop (shared by CLI, UI, evals)
 │   ├── structured.py    ← Structured output + JSON fallback, shared by all callers
 │   └── schemas.py       ← EmailDraft / FactualClaim / CriticVerdict / ResearchResult
@@ -164,7 +165,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
-172 tests, no network calls — every LLM and search client is mocked, so the suite is free,
+194 tests, no network calls — every LLM and search client is mocked, so the suite is free,
 offline and runs in about a second. That's deliberate: the live models sit behind a 200k
 tokens-per-day cap, and a suite that called them would compete with the eval harness for the
 same budget. Tests and evals answer different questions — tests verify logic, evals score
@@ -223,6 +224,9 @@ queue can be worked straight from the CSV. They are never sent.
 - **The critic checks drafts against sources, not against the research brief** — so it catches
   errors the *enricher* introduced too, not just the drafter's. It has already caught a bad
   unit conversion (Rs 12,626 crore restated as "Rs 12.6 billion", off by 10x)
+- **Provider errors are never shown raw** — Groq's rate-limit message carries the org id,
+  the quota and a billing upsell. Viewers get "Model capacity for today is used up. Try
+  again in about 18m." while logs keep the redacted technical detail
 - **Sender identity is config, not prompt text** — company, name, offering and ICP keywords
   live in `persona.toml`. Changing who the emails come from used to mean editing the system
   prompt, which is the one place an edit silently changes model behaviour

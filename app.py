@@ -9,6 +9,7 @@ os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
 os.environ["TAVILY_API_KEY"] = st.secrets["TAVILY_API_KEY"]
 
 from agents.enricher import enrich_lead
+from agents.errors import user_message
 from agents.pipeline import draft_with_gate
 from persona import PERSONA
 
@@ -154,7 +155,7 @@ if run_btn:
                                 st.text(src[:500])
                 except Exception as e:
                     st.markdown(
-                        f'<p class="status-err">Research failed: {e}</p>',
+                        f'<p class="status-err">{user_message(e, "researching this company")}</p>',
                         unsafe_allow_html=True,
                     )
                     results.append({**lead, "status": "ENRICH_ERROR", "draft": ""})
@@ -210,7 +211,7 @@ if run_btn:
                     })
                 except Exception as e:
                     st.markdown(
-                        f'<p class="status-err">Draft failed: {e}</p>',
+                        f'<p class="status-err">{user_message(e, "drafting this email")}</p>',
                         unsafe_allow_html=True,
                     )
                     results.append({**lead, "status": "DRAFT_ERROR", "draft": ""})

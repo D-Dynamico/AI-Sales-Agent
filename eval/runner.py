@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from agents.enricher import enrich_lead
+from agents.errors import log_detail
 from agents.pipeline import draft_with_gate
 from eval import checks, report
 from eval.llm_judge import judge_draft
@@ -52,7 +53,7 @@ def score_lead(lead: dict, use_judge: bool = True) -> dict:
         gated = _with_retry(lambda: draft_with_gate(lead, research, sources))
         draft, verdict = gated.draft, gated.verdict
     except Exception as e:
-        result["error"] = f"{type(e).__name__}: {e}"
+        result["error"] = log_detail(e)
         result["latency_s"] = round(time.time() - started, 1)
         return result
 
@@ -74,7 +75,7 @@ def score_lead(lead: dict, use_judge: bool = True) -> dict:
         except Exception as e:
             # A judge failure shouldn't discard a draft that scored fine on the free checks.
             result["judge_score"] = None
-            result["judge_reason"] = f"judge failed: {type(e).__name__}: {e}"
+            result["judge_reason"] = f"judge failed: {log_detail(e)}"
 
     result["latency_s"] = round(time.time() - started, 1)
     return result

@@ -6,6 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from agents.enricher import enrich_lead
+from agents.errors import log_detail, user_message
 from agents.icp import passes_icp
 from agents.pipeline import draft_with_gate
 from config import ICP_MIN_SCORE
@@ -59,8 +60,9 @@ def run_pipeline(dry_run=False, resume=False, delay=60, icp_threshold=ICP_MIN_SC
             research, sources = enrich_lead(lead)
             print(f"     Research ({len(sources)} sources): {research[:120]}...")
         except Exception as e:
-            print(f"     Enrichment failed: {e}")
-            log_result(lead, draft="", status=f"ENRICH_ERROR: {e}", log_path=OUTPUT_LOG)
+            print(f"     {user_message(e, 'researching this lead')}")
+            log_result(lead, draft="", status=f"ENRICH_ERROR: {log_detail(e)}",
+                       log_path=OUTPUT_LOG)
             continue
 
         print(f"[{i+1}] Drafting email...")
@@ -72,8 +74,9 @@ def run_pipeline(dry_run=False, resume=False, delay=60, icp_threshold=ICP_MIN_SC
             print(f"     Draft {gated.status} after {gated.attempts} attempt(s) — "
                   f"{grounded}/{len(verdict.claims)} claims grounded")
         except Exception as e:
-            print(f"     Draft failed: {e}")
-            log_result(lead, draft="", status=f"DRAFT_ERROR: {e}", log_path=OUTPUT_LOG)
+            print(f"     {user_message(e, 'drafting the email')}")
+            log_result(lead, draft="", status=f"DRAFT_ERROR: {log_detail(e)}",
+                       log_path=OUTPUT_LOG)
             continue
 
         if not gated.approved:
@@ -96,8 +99,9 @@ def run_pipeline(dry_run=False, resume=False, delay=60, icp_threshold=ICP_MIN_SC
                 print("     Sent successfully")
                 log_result(lead, draft=email_body, status="SENT", log_path=OUTPUT_LOG)
             except Exception as e:
-                print(f"     Send failed: {e}")
-                log_result(lead, draft=email_body, status=f"SEND_ERROR: {e}", log_path=OUTPUT_LOG)
+                print(f"     {user_message(e, 'sending')}")
+                log_result(lead, draft=email_body, status=f"SEND_ERROR: {log_detail(e)}",
+                           log_path=OUTPUT_LOG)
 
         if i < len(leads) - 1 and not dry_run:
             print(f"     Waiting {delay} seconds before next send...\n")
