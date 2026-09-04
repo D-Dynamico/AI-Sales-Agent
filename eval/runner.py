@@ -57,7 +57,7 @@ def score_lead(lead: dict, use_judge: bool = True) -> dict:
         return result
 
     result.update(checks.run_all(draft))
-    result["draft"] = draft
+    result["draft"] = draft.render()
     result["research"] = research
     result["n_sources"] = len(sources)
     result["attempts"] = gated.attempts

@@ -3,15 +3,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from langchain_tavily import TavilySearch
-from langchain_groq import ChatGroq
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from agents import cache
 from agents.planner import DEFAULT_BUDGET_SECONDS, plan_lookups, run_lookups
 from agents.schemas import ResearchResult, TriggerEvent
-from config import ENRICHMENT_TTL_SECONDS, PIPELINE_MODEL, USE_RESEARCH_CACHE
+from agents.structured import StructuredChain
+from config import ENRICHMENT_TTL_SECONDS, USE_RESEARCH_CACHE
 
 NO_RESEARCH = "No recent search results were found for this company."
 
@@ -101,89 +99,23 @@ class _ResearchExtraction(BaseModel):
     confidence: float = 0.0
 
 
-_structurer = None
-_json_fallback = None
+_JSON_HINT = ("Reply with ONLY a JSON object of the form "
+              '{{"trigger_events": [{{"kind": "funding", "summary": "...", '
+              '"source_quote": "..."}}], "pain_hypotheses": ["..."], "confidence": 0.5}} '
+              "- no prose, no code fences. `confidence` must be a plain decimal such as "
+              "0.8, never a word.")
 
-
-def _build_structurer():
-    llm = ChatGroq(model=PIPELINE_MODEL, temperature=0.2)
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("human", USER_TEMPLATE),
-    ])
-    return prompt | llm.with_structured_output(_ResearchExtraction)
-
-
-def _build_json_fallback():
-    """Plain-JSON escape hatch for when tool-call structured output fails.
-
-    Not paranoia: a live run produced four perfectly quoted events and then wrote
-    `"confidence": 0. nine`, which made the tool call unparseable and threw the entire
-    result away. Good research shouldn't be lost to one malformed token, so on failure we
-    ask again in plain text and parse it ourselves.
-    """
-    llm = ChatGroq(model=PIPELINE_MODEL, temperature=0.0)
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT + """
-
-Reply with ONLY a JSON object, no prose and no code fences, in exactly this shape:
-{{"trigger_events": [{{"kind": "funding", "summary": "...", "source_quote": "..."}}],
-  "pain_hypotheses": ["..."], "confidence": 0.5}}
-`confidence` must be a plain decimal number such as 0.8 — never a word."""),
-        ("human", USER_TEMPLATE),
-    ])
-    return prompt | llm | StrOutputParser()
-
-
-def _parse_json_block(text: str) -> _ResearchExtraction:
-    cleaned = (text or "").strip()
-    if cleaned.startswith("```"):
-        cleaned = cleaned.split("```")[1] if "```" in cleaned[3:] else cleaned.lstrip("`")
-        cleaned = cleaned.removeprefix("json").strip()
-    start, end = cleaned.find("{"), cleaned.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError("no JSON object in response")
-    return _ResearchExtraction.model_validate_json(cleaned[start:end + 1])
-
-
-def _is_infrastructure_error(exc: Exception) -> bool:
-    """Rate limits, auth failures and outages are not 'the model said nothing useful'."""
-    text = str(exc).lower()
-    return any(marker in text for marker in
-               ("429", "rate limit", "rate_limit", "401", "403", "authentication",
-                "insufficient_quota", "503", "502", "overloaded"))
+# on_unparseable="empty": for research, "found nothing" is a legitimate outcome the rest of
+# the pipeline already handles honestly. Infrastructure errors still propagate, so a rate
+# limit never masquerades as an empty web.
+_structurer = StructuredChain(
+    _ResearchExtraction, SYSTEM_PROMPT, USER_TEMPLATE,
+    temperature=0.2, json_hint=_JSON_HINT, on_unparseable="empty",
+)
 
 
 def _structure(payload: dict) -> _ResearchExtraction:
-    """Structured output first, plain-JSON retry second.
-
-    Only *parsing* failures are recoverable here. An infrastructure failure is re-raised so
-    the caller logs ENRICH_ERROR: swallowing a rate limit would return "no research found"
-    for a search that was never actually answered, and the pipeline would go on to write
-    confident generic emails while reporting the web had nothing to say. That is the same
-    silent-failure shape as the discarded-Tavily-results bug, and it must not be recreated
-    in the error handling built to guard against it.
-    """
-    global _structurer, _json_fallback
-
-    if _structurer is None:
-        _structurer = _build_structurer()
-    try:
-        return _structurer.invoke(payload) or _ResearchExtraction()
-    except Exception as exc:
-        if _is_infrastructure_error(exc):
-            raise
-
-    if _json_fallback is None:
-        _json_fallback = _build_json_fallback()
-    try:
-        return _parse_json_block(_json_fallback.invoke(payload))
-    except Exception as exc:
-        if _is_infrastructure_error(exc):
-            raise
-        # Both attempts produced unparseable text: the model genuinely answered, we just
-        # can't read it. Empty research is the honest result, and downstream handles it.
-        return _ResearchExtraction()
+    return _structurer.invoke(payload)
 
 
 def research_company(lead: dict, budget_seconds: float = DEFAULT_BUDGET_SECONDS,

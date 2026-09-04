@@ -12,10 +12,19 @@ FROM_NAME = "Alex from Alchemyst AI"
 FROM_EMAIL = os.getenv("FROM_EMAIL", "alex@alchemyst.ai")
 
 
+FALLBACK_SUBJECT = "Quick question"
+
+
 def _parse_subject_body(email_text: str):
-    """Split the LLM output into subject and body."""
+    """Split a legacy "Subject: ..." string into subject and body.
+
+    Retained only for drafts stored in the old single-blob format. The drafter now returns
+    a structured EmailDraft, so nothing in the live path parses subjects out of prose —
+    which is the point: a model that forgot the header used to produce an email whose
+    subject silently became the first line of the body.
+    """
     lines = email_text.strip().split("\n")
-    subject = "Quick question"
+    subject = FALLBACK_SUBJECT
     body_lines = []
 
     for i, line in enumerate(lines):
@@ -68,12 +77,21 @@ def send_via_smtp(to_email: str, to_name: str, subject: str, body: str):
         server.sendmail(FROM_EMAIL, to_email, msg.as_string())
 
 
-def send_email(to_email: str, to_name: str, body: str):
-    """
-    Main send function. Parses subject from LLM output, then sends.
+def send_email(to_email: str, to_name: str, body):
+    """Send a draft.
+
+    `body` is normally an EmailDraft, whose subject and body are already separate. A plain
+    string is still accepted so anything replaying an older stored draft keeps working.
     Uses SendGrid if SENDGRID_API_KEY is set, otherwise falls back to SMTP.
     """
-    subject, clean_body = _parse_subject_body(body)
+    if hasattr(body, "subject") and hasattr(body, "body"):
+        subject = (body.subject or "").strip() or FALLBACK_SUBJECT
+        clean_body = (body.body or "").strip()
+    else:
+        subject, clean_body = _parse_subject_body(body)
+
+    if not clean_body:
+        raise ValueError("refusing to send an email with an empty body")
 
     if os.getenv("SENDGRID_API_KEY"):
         send_via_sendgrid(to_email, to_name, subject, clean_body)

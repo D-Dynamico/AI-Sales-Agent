@@ -59,6 +59,22 @@ class ResearchResult(BaseModel):
         return "\n".join(lines)
 
 
+class EmailDraft(BaseModel):
+    """A drafted email as two fields rather than one blob.
+
+    Replaces regex-parsing "Subject:" back out of free text in the sender. The subject was
+    never really part of the body — reconstructing it downstream meant a model that forgot
+    the header produced an email with no subject and no way to tell until send time.
+    """
+
+    subject: str = Field(default="", description="Punchy, specific, under 8 words")
+    body: str = Field(default="", description="The email body only — never the subject line")
+
+    def render(self) -> str:
+        """The classic 'Subject: ...' form, for logs, previews and format checks."""
+        return f"Subject: {self.subject}\n\n{self.body}".strip()
+
+
 class FactualClaim(BaseModel):
     """One checkable assertion the draft makes about the recipient's company or person."""
 

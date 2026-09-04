@@ -97,7 +97,7 @@ col1, col2 = st.columns([1, 3])
 with col1:
     run_btn = st.button("Run Agent", type="primary", use_container_width=True)
 with col2:
-    st.caption("Powered by LLaMA 3.1 · Groq · Tavily Search")
+    st.caption("Powered by GPT-OSS 120B · Groq · Tavily Search · grounding-checked")
 
 st.divider()
 
@@ -187,7 +187,7 @@ if run_btn:
                         )
 
                     st.markdown(
-                        f'<div class="email-box">{draft}</div>',
+                        f'<div class="email-box">{draft.render()}</div>',
                         unsafe_allow_html=True,
                     )
                     if verdict.claims:
@@ -201,7 +201,8 @@ if run_btn:
                     results.append({
                         **lead,
                         "status": gated.status,
-                        "draft": draft,
+                        "subject": draft.subject,
+                        "draft": draft.body,
                         "claims_total": n_claims,
                         "claims_grounded": n_grounded,
                         "critique": verdict.critique,
@@ -232,7 +233,7 @@ if run_btn:
 
     if results:
         out = io.StringIO()
-        fields = ["name", "role", "company", "email", "status",
+        fields = ["name", "role", "company", "email", "status", "subject",
                   "claims_total", "claims_grounded", "critique", "draft"]
         writer = csv.DictWriter(out, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()

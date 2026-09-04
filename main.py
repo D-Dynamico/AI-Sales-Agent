@@ -86,7 +86,7 @@ def run_pipeline(dry_run=False, resume=False, delay=60, icp_threshold=ICP_MIN_SC
         if dry_run:
             print(f"[{i+1}] [DRY RUN] Would send to {email}:\n")
             print("-" * 60)
-            print(email_body)
+            print(email_body.render())
             print("-" * 60 + "\n")
             log_result(lead, draft=email_body, status="DRY_RUN", log_path=OUTPUT_LOG)
         else:

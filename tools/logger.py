@@ -41,7 +41,8 @@ def log_result(lead: dict, draft: str, status: str, log_path: Path, critique: st
     """
     _ensure_log(log_path)
 
-    preview = draft[:200].replace("\n", " ") if draft else ""
+    rendered = draft.render() if hasattr(draft, "render") else (draft or "")
+    preview = rendered[:200].replace("\n", " ")
 
     row = {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

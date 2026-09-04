@@ -1,9 +1,5 @@
-import os
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-
-from config import PIPELINE_MODEL
+from agents.schemas import EmailDraft
+from agents.structured import StructuredChain
 
 
 # Single source of truth: the prompt rule below is generated from this list, and
@@ -28,7 +24,8 @@ Rules (non-negotiable):
 4. One clear, low-friction CTA (e.g. "Worth a 15-min call this week?")
 5. No bullet points. Flowing prose only.
 6. Sign off as: Alex, Alchemyst AI
-7. Subject line: punchy, specific, under 8 words. Include it at the top as "Subject: ..."
+7. Subject line: punchy, specific, under 8 words. Return it in the `subject` field.
+8. The `body` field contains the email only. Never repeat the subject inside the body.
 
 Tone: Direct. Intelligent. Peer-to-peer. Not salesy.
 """
@@ -43,33 +40,27 @@ Lead info:
 Research brief:
 {research}
 
-Write the subject line first, then the email body.
 """
 
 
-def build_drafter():
-    llm = ChatGroq(
-        model=PIPELINE_MODEL,
-        temperature=0.7,
-        api_key=os.getenv("GROQ_API_KEY"),
-    )
-
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("human", USER_TEMPLATE),
-    ])
-
-    return prompt | llm | StrOutputParser()
-
+_JSON_HINT = ("Reply with ONLY a JSON object of the form "
+              '{{"subject": "...", "body": "..."}} — no prose, no code fences.')
 
 _drafter = None
 
 
-def draft_email(lead: dict, research: str) -> str:
-    """
-    Takes a lead dict and research brief string.
-    Returns the full email (subject line + body) as a string.
-    """
+def build_drafter():
+    return StructuredChain(
+        EmailDraft, SYSTEM_PROMPT, USER_TEMPLATE,
+        temperature=0.7, json_hint=_JSON_HINT,
+        # A silently empty email is worse than a logged failure: the pipeline would send
+        # blank mail. Let it surface as DRAFT_ERROR instead.
+        on_unparseable="raise",
+    )
+
+
+def draft_email(lead: dict, research: str) -> EmailDraft:
+    """Draft an email as structured subject + body."""
     global _drafter
     if _drafter is None:
         _drafter = build_drafter()
@@ -103,41 +94,34 @@ What was wrong with it:
 Fix every point above. Do not introduce any new claim about the company or person that the
 research brief does not state — an unsupported claim is the most serious failure here, and
 writing a vaguer email is always better than writing a confident wrong one.
-Keep the same rules: subject line first, then the body."""
+Keep the same rules, and keep the subject and body in their separate fields."""
 
 
 _rewriter = None
 
 
 def build_rewriter():
-    llm = ChatGroq(
-        model=PIPELINE_MODEL,
+    return StructuredChain(
+        EmailDraft, SYSTEM_PROMPT, REWRITE_TEMPLATE,
         # Lower than the drafter's 0.7: a rewrite is a correction against specific feedback,
         # not another creative attempt, and high temperature here tends to reintroduce the
         # invented detail the critique just asked to remove.
-        temperature=0.3,
-        api_key=os.getenv("GROQ_API_KEY"),
+        temperature=0.3, json_hint=_JSON_HINT, on_unparseable="raise",
     )
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("human", REWRITE_TEMPLATE),
-    ])
 
-    return prompt | llm | StrOutputParser()
-
-
-def rewrite_email(lead: dict, research: str, previous_draft: str, critique: str) -> str:
+def rewrite_email(lead: dict, research: str, previous_draft, critique: str) -> EmailDraft:
     """Second attempt at a draft, given the critic's specific objections."""
     global _rewriter
     if _rewriter is None:
         _rewriter = build_rewriter()
 
+    previous = previous_draft.render() if hasattr(previous_draft, "render") else previous_draft
     return _rewriter.invoke({
         "name": lead.get("name", ""),
         "role": lead.get("role", ""),
         "company": lead.get("company", ""),
         "research": research,
-        "previous_draft": previous_draft,
+        "previous_draft": previous,
         "critique": critique,
     })

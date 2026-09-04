@@ -33,8 +33,8 @@ Enrichment Agent  ──→  Those angles searched in parallel via Tavily (last 
     │                  GPT-OSS 120B structures them into trigger_events + confidence
     │                  Returns: research brief + raw source snippets
     ▼
-Email Drafter     ──→  GPT-OSS 120B via Groq
-    │                  Returns: subject line + <120 word email
+Email Drafter     ──→  GPT-OSS 120B via Groq, structured output
+    │                  Returns: EmailDraft(subject, body) — no regex parsing
     ▼
 Critic (gate)     ──→  Extracts every claim, traces each to a source quote
     │                  Fails → rewrite with the critique → re-check
@@ -78,7 +78,8 @@ sales-agent/
 │   ├── drafter.py       ← LLM email drafting + rewrite-on-critique chain
 │   ├── critic.py        ← Grounding gate: claim extraction + source verification
 │   ├── pipeline.py      ← draft → critique → rewrite loop (shared by CLI, UI, evals)
-│   └── schemas.py       ← FactualClaim / CriticVerdict / ResearchResult
+│   ├── structured.py    ← Structured output + JSON fallback, shared by all callers
+│   └── schemas.py       ← EmailDraft / FactualClaim / CriticVerdict / ResearchResult
 ├── tools/
 │   ├── sender.py        ← SendGrid / SMTP sender
 │   └── logger.py        ← CSV logger with duplicate detection
@@ -144,7 +145,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
-145 tests, no network calls — every LLM and search client is mocked, so the suite is free,
+162 tests, no network calls — every LLM and search client is mocked, so the suite is free,
 offline and runs in about a second. That's deliberate: the live models sit behind a 200k
 tokens-per-day cap, and a suite that called them would compete with the eval harness for the
 same budget. Tests and evals answer different questions — tests verify logic, evals score
@@ -203,6 +204,11 @@ queue can be worked straight from the CSV. They are never sent.
 - **The critic checks drafts against sources, not against the research brief** — so it catches
   errors the *enricher* introduced too, not just the drafter's. It has already caught a bad
   unit conversion (Rs 12,626 crore restated as "Rs 12.6 billion", off by 10x)
+- **Structured output everywhere, with a plain-JSON fallback** — the drafter returns
+  `EmailDraft(subject, body)` instead of a blob a regex has to unpick, so a model that
+  forgets the header can't silently turn the first line of the email into its subject. The
+  fallback exists because one live call produced four perfect research events and then wrote
+  `"confidence": 0. nine`, losing all of it to a single malformed token
 - **Research is cached per company, not per lead** — ten contacts at one firm cost one
   research pass. Not just tidiness: the models sit behind a 200k tokens-per-day cap
 - **The ICP filter and lookup planner are rule-based, not LLM calls** — both exist to spend
