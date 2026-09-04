@@ -4,7 +4,7 @@ Logger — writes results to a CSV output log and checks for duplicates.
 
 import csv
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -44,7 +44,7 @@ def log_result(lead: dict, draft: str, status: str, log_path: Path, critique: st
     preview = draft[:200].replace("\n", " ") if draft else ""
 
     row = {
-        "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "name": lead.get("name", ""),
         "role": lead.get("role", ""),
         "company": lead.get("company", ""),

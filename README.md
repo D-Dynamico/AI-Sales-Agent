@@ -127,6 +127,19 @@ python main.py --resume
 python main.py --delay 90
 ```
 
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -q
+```
+
+80 tests, no network calls — every LLM and search client is mocked, so the suite is free,
+offline and runs in about a second. That's deliberate: the live models sit behind a 200k
+tokens-per-day cap, and a suite that called them would compete with the eval harness for the
+same budget. Tests and evals answer different questions — tests verify logic, evals score
+output quality.
+
 ### Evals
 
 Every prompt change should be measured, not eyeballed. The harness runs a fixed 25-lead

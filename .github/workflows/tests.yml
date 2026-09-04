@@ -1,0 +1,21 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      # No API keys are provided on purpose: every client is mocked, so a test that
+      # reaches the network is a bug and should fail here rather than quietly bill the
+      # project's daily token budget.
+      - run: python -m pytest tests/ -q

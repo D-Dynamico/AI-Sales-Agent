@@ -85,7 +85,9 @@ def _distinctive_tokens(text: str) -> list[str]:
     fabricated quote cannot supply, whereas filler words are free to invent."""
     tokens = []
     for raw in _normalise(text).replace("/", " ").split():
-        token = raw.strip(".,;:!?()[]{}\"'`-–—")
+        # Currency symbols are stripped ("$400m" and "400m" are the same figure written two
+        # ways), but "%" is kept — a percentage is a different quantity from a bare number.
+        token = raw.strip(".,;:!?()[]{}\"'`-–—$₹£€")
         if not token or token in _STOPWORDS:
             continue
         if any(ch.isdigit() for ch in token) or len(token) >= 5:
