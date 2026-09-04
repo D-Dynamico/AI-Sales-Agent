@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from agents.enricher import enrich_lead
-from agents.drafter import draft_email
+from agents.pipeline import draft_with_gate
 from tools.sender import send_email
 from tools.logger import log_result, already_sent
 
@@ -14,6 +14,10 @@ load_dotenv()
 
 LEADS_FILE = Path("data/leads.csv")
 OUTPUT_LOG = Path("data/output_log.csv")
+
+
+def indent(text: str, prefix: str = "       ") -> str:
+    return "\n".join(prefix + line for line in text.splitlines())
 
 
 def load_leads():
@@ -40,8 +44,8 @@ def run_pipeline(dry_run=False, resume=False, delay=60):
 
         print(f"[{i+1}] Enriching lead: {name} @ {lead.get('company', '')}")
         try:
-            research = enrich_lead(lead)
-            print(f"     Research: {research[:120]}...")
+            research, sources = enrich_lead(lead)
+            print(f"     Research ({len(sources)} sources): {research[:120]}...")
         except Exception as e:
             print(f"     Enrichment failed: {e}")
             log_result(lead, draft="", status=f"ENRICH_ERROR: {e}", log_path=OUTPUT_LOG)
@@ -49,11 +53,22 @@ def run_pipeline(dry_run=False, resume=False, delay=60):
 
         print(f"[{i+1}] Drafting email...")
         try:
-            email_body = draft_email(lead, research)
-            print(f"     Preview: {email_body[:100]}...")
+            gated = draft_with_gate(lead, research, sources)
+            email_body = gated.draft
+            verdict = gated.verdict
+            grounded = len(verdict.grounded_claims)
+            print(f"     Draft {gated.status} after {gated.attempts} attempt(s) — "
+                  f"{grounded}/{len(verdict.claims)} claims grounded")
         except Exception as e:
             print(f"     Draft failed: {e}")
             log_result(lead, draft="", status=f"DRAFT_ERROR: {e}", log_path=OUTPUT_LOG)
+            continue
+
+        if not gated.approved:
+            # Never send a draft the critic couldn't vouch for — park it for a human.
+            print(f"     Held for review:\n{indent(verdict.critique)}")
+            log_result(lead, draft=email_body, status="NEEDS_REVIEW",
+                       log_path=OUTPUT_LOG, critique=verdict.critique)
             continue
 
         if dry_run:

@@ -17,3 +17,10 @@ PIPELINE_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 # Judging is one call per lead, so a stronger model is affordable here and makes the
 # score worth more than the drafter grading its own homework.
 JUDGE_MODEL = os.getenv("GROQ_JUDGE_MODEL", "openai/gpt-oss-120b")
+
+# The critic decides whether an email is allowed to reach a real person, so it gets the
+# strongest model available and temperature 0 — a flaky gate is worse than no gate.
+CRITIC_MODEL = os.getenv("GROQ_CRITIC_MODEL", "openai/gpt-oss-120b")
+
+# Drafts allowed per lead before it goes to a human: the first draft plus one rewrite.
+MAX_DRAFT_ATTEMPTS = int(os.getenv("MAX_DRAFT_ATTEMPTS", "2"))

@@ -1,8 +1,9 @@
-timestamp,prompt_version,pipeline_model,judge_model,n_leads,n_errors,word_count_pass_rate,subject_pass_rate,cliche_pass_rate,cta_pass_rate,judge_mean,grounded_claim_rate,mean_latency_s
-2026-09-04T18:20:38Z,v1,openai/gpt-oss-20b,openai/gpt-oss-120b,25,8,1.0,0.941,1.0,0.941,4.12,,13.9
-2026-09-04T18:26:55Z,v2,openai/gpt-oss-20b,openai/gpt-oss-120b,25,0,1.0,0.96,1.0,0.92,2.64,,12.4
-2026-09-04T18:57:58Z,v2,openai/gpt-oss-20b,openai/gpt-oss-120b,12,0,1.0,0.917,1.0,0.917,2.67,,10.3
-2026-09-04T19:00:35Z,v2,openai/gpt-oss-120b,openai/gpt-oss-120b,12,0,1.0,1.0,1.0,0.917,3.0,,12.9
-2026-09-04T19:09:03Z,v2,qwen/qwen3.6-27b,openai/gpt-oss-120b,12,8,0.5,0.5,1.0,0.75,2.25,,42.2
-2026-09-04T19:10:39Z,v2,qwen/qwen3.8-27b,openai/gpt-oss-120b,12,0,0.917,1.0,1.0,1.0,2.25,,7.9
-2026-09-04T19:25:02Z,v2,openai/gpt-oss-120b,openai/gpt-oss-120b,25,0,1.0,1.0,1.0,0.92,3.44,,14.0
+timestamp,prompt_version,pipeline_model,judge_model,n_leads,n_errors,word_count_pass_rate,subject_pass_rate,cliche_pass_rate,cta_pass_rate,judge_mean,grounded_claim_rate,gate_pass_rate,mean_claims_per_draft,mean_attempts,mean_latency_s
+2026-09-04T18:20:38Z,v1,openai/gpt-oss-20b,openai/gpt-oss-120b,25,8,1.0,0.941,1.0,0.941,4.12,,,,,13.9
+2026-09-04T18:26:55Z,v2,openai/gpt-oss-20b,openai/gpt-oss-120b,25,0,1.0,0.96,1.0,0.92,2.64,,,,,12.4
+2026-09-04T18:57:58Z,v2,openai/gpt-oss-20b,openai/gpt-oss-120b,12,0,1.0,0.917,1.0,0.917,2.67,,,,,10.3
+2026-09-04T19:00:35Z,v2,openai/gpt-oss-120b,openai/gpt-oss-120b,12,0,1.0,1.0,1.0,0.917,3.0,,,,,12.9
+2026-09-04T19:09:03Z,v2,qwen/qwen3.6-27b,openai/gpt-oss-120b,12,8,0.5,0.5,1.0,0.75,2.25,,,,,42.2
+2026-09-04T19:10:39Z,v2,qwen/qwen3.8-27b,openai/gpt-oss-120b,12,0,0.917,1.0,1.0,1.0,2.25,,,,,7.9
+2026-09-04T19:25:02Z,v2,openai/gpt-oss-120b,openai/gpt-oss-120b,25,0,1.0,1.0,1.0,0.92,3.44,,,,,14.0
+2026-09-04T19:54:13Z,v2,qwen/qwen3.8-27b,qwen/qwen3.8-27b,4,2,1.0,1.0,1.0,1.0,4.5,1.0,1.0,3.5,1.0,25.9

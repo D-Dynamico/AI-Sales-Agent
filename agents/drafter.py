@@ -80,3 +80,64 @@ def draft_email(lead: dict, research: str) -> str:
         "company": lead.get("company", ""),
         "research": research,
     })
+
+
+REWRITE_TEMPLATE = """Your previous draft did not pass review. Rewrite it.
+
+Lead info:
+- Name: {name}
+- Role: {role}
+- Company: {company}
+
+Research brief (the ONLY source you may draw facts from):
+{research}
+
+Your previous draft:
+---
+{previous_draft}
+---
+
+What was wrong with it:
+{critique}
+
+Fix every point above. Do not introduce any new claim about the company or person that the
+research brief does not state — an unsupported claim is the most serious failure here, and
+writing a vaguer email is always better than writing a confident wrong one.
+Keep the same rules: subject line first, then the body."""
+
+
+_rewriter = None
+
+
+def build_rewriter():
+    llm = ChatGroq(
+        model=PIPELINE_MODEL,
+        # Lower than the drafter's 0.7: a rewrite is a correction against specific feedback,
+        # not another creative attempt, and high temperature here tends to reintroduce the
+        # invented detail the critique just asked to remove.
+        temperature=0.3,
+        api_key=os.getenv("GROQ_API_KEY"),
+    )
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_PROMPT),
+        ("human", REWRITE_TEMPLATE),
+    ])
+
+    return prompt | llm | StrOutputParser()
+
+
+def rewrite_email(lead: dict, research: str, previous_draft: str, critique: str) -> str:
+    """Second attempt at a draft, given the critic's specific objections."""
+    global _rewriter
+    if _rewriter is None:
+        _rewriter = build_rewriter()
+
+    return _rewriter.invoke({
+        "name": lead.get("name", ""),
+        "role": lead.get("role", ""),
+        "company": lead.get("company", ""),
+        "research": research,
+        "previous_draft": previous_draft,
+        "critique": critique,
+    })

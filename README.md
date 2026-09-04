@@ -24,10 +24,14 @@ leads.csv
     ▼
 Enrichment Agent  ──→  Tavily Search (last 30 days)
     │                  GPT-OSS 120B via Groq
-    │                  Returns: 3-5 sentence research brief
+    │                  Returns: research brief + raw source snippets
     ▼
 Email Drafter     ──→  GPT-OSS 120B via Groq
     │                  Returns: subject line + <120 word email
+    ▼
+Critic (gate)     ──→  Extracts every claim, traces each to a source quote
+    │                  Fails → rewrite with the critique → re-check
+    │                  Still failing after 2 attempts → NEEDS_REVIEW, never sent
     ▼
 Sender            ──→  SendGrid (primary) / SMTP (fallback)
     │
@@ -60,8 +64,11 @@ sales-agent/
 ├── requirements.txt
 ├── .env.example
 ├── agents/
-│   ├── enricher.py      ← LangChain + Tavily research agent
-│   └── drafter.py       ← LLM email drafting chain
+│   ├── enricher.py      ← LangChain + Tavily research, returns brief + raw sources
+│   ├── drafter.py       ← LLM email drafting + rewrite-on-critique chain
+│   ├── critic.py        ← Grounding gate: claim extraction + source verification
+│   ├── pipeline.py      ← draft → critique → rewrite loop (shared by CLI, UI, evals)
+│   └── schemas.py       ← FactualClaim / CriticVerdict
 ├── tools/
 │   ├── sender.py        ← SendGrid / SMTP sender
 │   └── logger.py        ← CSV logger with duplicate detection
@@ -132,9 +139,11 @@ python -m eval.runner --limit 5    # quick pass while iterating
 python -m eval.runner --no-judge   # deterministic checks only, no LLM judge cost
 ```
 
-Scored on: word count ≤120, subject line present, no banned phrases, exactly one CTA, plus
-an LLM judge rating personalisation specificity 1-5. Bump `PROMPT_VERSION` in
-`eval/prompt_version.py` whenever you edit a system prompt, so history rows stay comparable.
+Scored on: word count ≤120, subject line present, no banned phrases, exactly one CTA, an LLM
+judge rating personalisation specificity 1-5, and — the headline number — **grounded claim
+rate**: what fraction of all factual claims across all drafts trace back to a real source.
+Bump `PROMPT_VERSION` in `eval/prompt_version.py` whenever you edit a system prompt, so
+history rows stay comparable; `pipeline_model` and `judge_model` are recorded automatically.
 
 ---
 
@@ -155,12 +164,22 @@ timestamp,name,role,company,email,status,draft_preview
 2026-03-31T10:23:01Z,Priya Sharma,Head of Sales,Razorpay,...,SENT,"Subject: ..."
 ```
 
-Statuses: `SENT` · `DRY_RUN` · `ENRICH_ERROR` · `DRAFT_ERROR` · `SEND_ERROR`
+Statuses: `SENT` · `DRY_RUN` · `NEEDS_REVIEW` · `ENRICH_ERROR` · `DRAFT_ERROR` · `SEND_ERROR`
+
+`NEEDS_REVIEW` rows carry the critic's objections in the `critique` column, so the review
+queue can be worked straight from the CSV. They are never sent.
 
 ---
 
 ## Key design decisions
 
+- **Nothing sends unless its claims trace to a source** — the critic extracts every factual
+  claim about the recipient and requires a verbatim supporting quote from the search results.
+  Claims are re-verified in Python, so the gate can't be talked into passing; `passed` is
+  computed from evidence, never asserted by the model. Two attempts, then a human looks at it
+- **The critic checks drafts against sources, not against the research brief** — so it catches
+  errors the *enricher* introduced too, not just the drafter's. It has already caught a bad
+  unit conversion (Rs 12,626 crore restated as "Rs 12.6 billion", off by 10x)
 - **`days=30` on Tavily** — filters search results to last 30 days so research is always current, not cached old news
 - **Two-step pipeline** — enrichment and drafting are separate so each can fail/retry independently
 - **Rate limiting** — 60s default between sends to avoid spam filters

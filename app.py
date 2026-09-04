@@ -9,7 +9,7 @@ os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
 os.environ["TAVILY_API_KEY"] = st.secrets["TAVILY_API_KEY"]
 
 from agents.enricher import enrich_lead
-from agents.drafter import draft_email
+from agents.pipeline import draft_with_gate
 
 # Page config
 st.set_page_config(
@@ -44,6 +44,17 @@ st.markdown("""
     }
     .status-ok  { color: #4caf50; font-weight: 600; }
     .status-err { color: #f44336; font-weight: 600; }
+    .status-warn { color: #ff9800; font-weight: 600; }
+    .critique-box {
+        background: rgba(255, 152, 0, 0.10);
+        border-left: 3px solid #ff9800;
+        border-radius: 6px;
+        padding: 0.8rem 1rem;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+        margin: 0.5rem 0;
+        color: inherit;
+    }
     .badge {
         display: inline-block;
         background: rgba(108, 99, 255, 0.15);
@@ -129,13 +140,17 @@ if run_btn:
             # Step 1: Enrich
             with st.spinner(f"Researching {company}..."):
                 try:
-                    research = enrich_lead(lead)
+                    research, sources = enrich_lead(lead)
                     st.markdown(
-                        f'<p class="status-ok">Research complete</p>',
+                        f'<p class="status-ok">Research complete — {len(sources)} source(s)</p>',
                         unsafe_allow_html=True,
                     )
                     with st.expander("View research brief"):
                         st.write(research)
+                        if sources:
+                            st.caption("Sources the critic checks claims against:")
+                            for src in sources:
+                                st.text(src[:500])
                 except Exception as e:
                     st.markdown(
                         f'<p class="status-err">Research failed: {e}</p>',
@@ -144,19 +159,53 @@ if run_btn:
                     results.append({**lead, "status": "ENRICH_ERROR", "draft": ""})
                     continue
 
-            # Step 2: Draft
-            with st.spinner(f"Drafting email for {name}..."):
+            # Step 2: Draft, then gate on grounding before it counts as usable
+            with st.spinner(f"Drafting and fact-checking email for {name}..."):
                 try:
-                    draft = draft_email(lead, research)
-                    st.markdown(
-                        f'<p class="status-ok">Email drafted</p>',
-                        unsafe_allow_html=True,
-                    )
+                    gated = draft_with_gate(lead, research, sources)
+                    draft, verdict = gated.draft, gated.verdict
+                    n_claims = len(verdict.claims)
+                    n_grounded = len(verdict.grounded_claims)
+
+                    if gated.approved:
+                        st.markdown(
+                            f'<p class="status-ok">Email drafted and verified — '
+                            f'{n_grounded}/{n_claims} claims traced to sources '
+                            f'({gated.attempts} attempt(s))</p>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            f'<p class="status-warn">Held for review — '
+                            f'{n_grounded}/{n_claims} claims traced to sources '
+                            f'after {gated.attempts} attempt(s)</p>',
+                            unsafe_allow_html=True,
+                        )
+                        st.markdown(
+                            f'<div class="critique-box">{verdict.critique}</div>',
+                            unsafe_allow_html=True,
+                        )
+
                     st.markdown(
                         f'<div class="email-box">{draft}</div>',
                         unsafe_allow_html=True,
                     )
-                    results.append({**lead, "status": "DRAFTED", "draft": draft})
+                    if verdict.claims:
+                        with st.expander("Claim-by-claim grounding"):
+                            for c in verdict.claims:
+                                mark = "grounded" if c.grounded else "UNSUPPORTED"
+                                st.markdown(f"**[{mark}]** {c.text}")
+                                if c.source_quote:
+                                    st.caption(f"source: {c.source_quote[:300]}")
+
+                    results.append({
+                        **lead,
+                        "status": gated.status,
+                        "draft": draft,
+                        "claims_total": n_claims,
+                        "claims_grounded": n_grounded,
+                        "critique": verdict.critique,
+                    })
                 except Exception as e:
                     st.markdown(
                         f'<p class="status-err">Draft failed: {e}</p>',
@@ -170,14 +219,21 @@ if run_btn:
 
     # Summary + Download
     st.divider()
-    sent = sum(1 for r in results if r["status"] == "DRAFTED")
-    errors = len(results) - sent
+    approved = sum(1 for r in results if r["status"] == "APPROVED")
+    review = sum(1 for r in results if r["status"] == "NEEDS_REVIEW")
+    errors = len(results) - approved - review
 
-    st.markdown(f"### Done — {sent} drafted, {errors} failed")
+    st.markdown(f"### Done — {approved} verified, {review} held for review, {errors} failed")
+    if review:
+        st.caption(
+            "Held drafts made claims that couldn't be traced back to the research. "
+            "They're included in the CSV with the critique, but shouldn't be sent as-is."
+        )
 
     if results:
         out = io.StringIO()
-        fields = ["name", "role", "company", "email", "status", "draft"]
+        fields = ["name", "role", "company", "email", "status",
+                  "claims_total", "claims_grounded", "critique", "draft"]
         writer = csv.DictWriter(out, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(results)

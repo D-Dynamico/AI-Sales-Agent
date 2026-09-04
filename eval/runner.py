@@ -15,8 +15,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from agents.drafter import draft_email
 from agents.enricher import enrich_lead
+from agents.pipeline import draft_with_gate
 from eval import checks, report
 from eval.llm_judge import judge_draft
 from eval.prompt_version import PROMPT_VERSION
@@ -48,8 +48,9 @@ def score_lead(lead: dict, use_judge: bool = True) -> dict:
     started = time.time()
 
     try:
-        research = _with_retry(lambda: enrich_lead(lead))
-        draft = _with_retry(lambda: draft_email(lead, research))
+        research, sources = _with_retry(lambda: enrich_lead(lead))
+        gated = _with_retry(lambda: draft_with_gate(lead, research, sources))
+        draft, verdict = gated.draft, gated.verdict
     except Exception as e:
         result["error"] = f"{type(e).__name__}: {e}"
         result["latency_s"] = round(time.time() - started, 1)
@@ -58,6 +59,12 @@ def score_lead(lead: dict, use_judge: bool = True) -> dict:
     result.update(checks.run_all(draft))
     result["draft"] = draft
     result["research"] = research
+    result["n_sources"] = len(sources)
+    result["attempts"] = gated.attempts
+    result["gate_passed"] = verdict.passed
+    result["n_claims"] = len(verdict.claims)
+    result["n_grounded"] = len(verdict.grounded_claims)
+    result["critique"] = verdict.critique
 
     if use_judge:
         try:

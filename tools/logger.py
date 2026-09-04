@@ -8,7 +8,9 @@ from datetime import datetime
 from pathlib import Path
 
 
-FIELDNAMES = ["timestamp", "name", "role", "company", "email", "status", "draft_preview"]
+FIELDNAMES = [
+    "timestamp", "name", "role", "company", "email", "status", "draft_preview", "critique",
+]
 
 
 def _ensure_log(log_path: Path):
@@ -31,8 +33,12 @@ def already_sent(email: str, log_path: Path) -> bool:
     return False
 
 
-def log_result(lead: dict, draft: str, status: str, log_path: Path):
-    """Appends a result row to the output CSV log."""
+def log_result(lead: dict, draft: str, status: str, log_path: Path, critique: str = ""):
+    """Appends a result row to the output CSV log.
+
+    `critique` carries the critic's objections for NEEDS_REVIEW rows, so the review queue
+    can be worked straight from this file without re-running the pipeline.
+    """
     _ensure_log(log_path)
 
     preview = draft[:200].replace("\n", " ") if draft else ""
@@ -45,6 +51,7 @@ def log_result(lead: dict, draft: str, status: str, log_path: Path):
         "email": lead.get("email", ""),
         "status": status,
         "draft_preview": preview,
+        "critique": critique.replace("\n", " | ") if critique else "",
     }
 
     with open(log_path, "a", newline="", encoding="utf-8") as f:
