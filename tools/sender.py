@@ -7,10 +7,10 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+from persona import PERSONA
 
-FROM_NAME = "Alex from Alchemyst AI"
-FROM_EMAIL = os.getenv("FROM_EMAIL", "alex@alchemyst.ai")
-
+FROM_NAME = PERSONA.from_name
+FROM_EMAIL = PERSONA.from_email
 
 FALLBACK_SUBJECT = "Quick question"
 

@@ -1,4 +1,5 @@
 from agents.schemas import EmailDraft
+from persona import PERSONA
 from agents.structured import StructuredChain
 
 
@@ -14,8 +15,8 @@ BANNED_PHRASES = [
 
 _BANNED_FOR_PROMPT = ", ".join(f'"{phrase}"' for phrase in BANNED_PHRASES)
 
-SYSTEM_PROMPT = f"""You write hyper-personalised cold emails on behalf of Alchemyst AI —
-an AI infrastructure company that helps B2B teams automate sales, marketing, and ops workflows.
+SYSTEM_PROMPT = f"""You write hyper-personalised cold emails on behalf of {PERSONA.company} —
+{PERSONA.offering}.
 
 Rules (non-negotiable):
 1. Max 120 words. Brevity is respect.
@@ -23,7 +24,7 @@ Rules (non-negotiable):
 3. Never say: {_BANNED_FOR_PROMPT}.
 4. One clear, low-friction CTA (e.g. "Worth a 15-min call this week?")
 5. No bullet points. Flowing prose only.
-6. Sign off as: Alex, Alchemyst AI
+6. Sign off as: {PERSONA.signoff}
 7. Subject line: punchy, specific, under 8 words. Return it in the `subject` field.
 8. The `body` field contains the email only. Never repeat the subject inside the body.
 

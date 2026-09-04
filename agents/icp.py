@@ -6,11 +6,13 @@ cheaper than the work it prevents. Rules also make the decision inspectable: a s
 comes with the reason it was skipped, which matters when the thing being automated is
 "don't contact this person".
 
-The keyword lists are the ICP definition for now; Phase 6 moves them into persona config
-alongside the value proposition, since "who we sell to" belongs with "what we sell".
+The keyword lists live in persona.toml alongside the value proposition, since "who we sell
+to" only means anything relative to "what we sell".
 """
 
 from dataclasses import dataclass, field
+
+from persona import PERSONA
 
 # Founders and C-level own every function, so "is this their remit?" is always yes for them.
 # Scoring them on function keywords was wrong: it dropped a co-founder to a partial match
@@ -27,18 +29,10 @@ SENIOR_TITLES = {
     "vp", "vice", "head", "director", "principal", "lead", "chief of staff",
 }
 
-# Functions this product is actually for: sales, marketing, revenue, growth, ops.
-RELEVANT_FUNCTIONS = {
-    "sales", "marketing", "revenue", "growth", "demand", "outbound", "gtm",
-    "operations", "ops", "business", "bizdev", "partnerships", "commercial",
-    "customer", "success", "strategy",
-}
-
-# Roles that are individual contributors, too junior to buy, or plainly out of scope.
-DISQUALIFYING_TITLES = {
-    "intern", "trainee", "student", "apprentice", "assistant", "associate",
-    "recruiter", "volunteer", "retired", "freelance",
-}
+# Which functions matter depends entirely on what you sell, so both lists come from
+# persona.toml rather than being fixed here. They decide who never gets contacted.
+RELEVANT_FUNCTIONS = set(PERSONA.icp_functions)
+DISQUALIFYING_TITLES = set(PERSONA.disqualifying_titles)
 
 
 @dataclass

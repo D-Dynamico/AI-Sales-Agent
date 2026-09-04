@@ -1,0 +1,42 @@
+# Who is sending, what they sell, and who they sell to.
+#
+# Everything identity-shaped lives here so the pipeline can be pointed at a different
+# company by editing one file. Previously "Alchemyst AI" and "Alex" were baked into the
+# drafter prompt, the sender headers and the Streamlit title, so changing them meant
+# editing prompts — the one place a change silently alters model behaviour.
+#
+# Any value can be overridden by an environment variable (named in the comments below),
+# which is how deployments differ without a file edit.
+
+[sender]
+# Signs the emails. SENDER_NAME / SENDER_COMPANY.
+name = "Alex"
+company = "Alchemyst AI"
+# The From: header. FROM_EMAIL.
+from_email = "alex@alchemyst.ai"
+
+[offering]
+# One line, in the second person, describing what you do for the recipient. This goes
+# straight into the drafter's system prompt, so keep it concrete — vague value props are
+# what produce the generic emails the eval judge scores 2/5.
+description = """an AI infrastructure company that helps B2B teams automate sales, \
+marketing, and ops workflows"""
+
+[icp]
+# Prose description of the target buyer. Used in prompts and as documentation for the
+# keyword lists below.
+description = "B2B teams with a revenue, growth or operations function large enough to feel workflow pain"
+
+# Job functions worth contacting. These drive agents/icp.py scoring, so they encode who
+# gets skipped before any tokens are spent — edit deliberately.
+functions = [
+    "sales", "marketing", "revenue", "growth", "demand", "outbound", "gtm",
+    "operations", "ops", "business", "bizdev", "partnerships", "commercial",
+    "customer", "success", "strategy",
+]
+
+# Titles that mean "not a buyer" regardless of seniority.
+disqualifying_titles = [
+    "intern", "trainee", "student", "apprentice", "assistant", "associate",
+    "recruiter", "volunteer", "retired", "freelance",
+]

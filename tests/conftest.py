@@ -23,6 +23,20 @@ def isolate_research_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "research_cache")
 
 
+@pytest.fixture(autouse=True)
+def isolate_persona_env(monkeypatch):
+    """Clear persona overrides so tests don't inherit the developer's .env.
+
+    Found the same way as the cache leak: a test asserting a config file's from_email got
+    the maintainer's personal address instead, because something imports dotenv at module
+    load and env vars outrank the file by design. A suite whose results depend on the
+    machine it runs on isn't testing the code.
+    """
+    for name in ("SENDER_NAME", "SENDER_COMPANY", "SENDER_OFFERING", "FROM_EMAIL",
+                 "PERSONA_FILE"):
+        monkeypatch.delenv(name, raising=False)
+
+
 class FakeChain:
     """Stands in for a LangChain `prompt | llm | parser` chain.
 

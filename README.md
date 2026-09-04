@@ -67,7 +67,9 @@ Logger            ──→  output_log.csv
 sales-agent/
 ├── app.py               ← Streamlit UI
 ├── main.py              ← CLI runner
-├── config.py            ← Model ids (env-overridable)
+├── config.py            ← Model ids, budgets, thresholds (env-overridable)
+├── persona.toml         ← Who is sending, what they sell, who they sell to
+├── persona.py           ← Loads persona.toml (env vars win)
 ├── requirements.txt
 ├── .env.example
 ├── agents/
@@ -114,6 +116,23 @@ GROQ_API_KEY=gsk_...
 TAVILY_API_KEY=tvly_...
 ```
 
+Then make it yours — edit `persona.toml`:
+
+```toml
+[sender]
+name = "Your Name"
+company = "Your Company"
+from_email = "you@yourcompany.com"
+
+[offering]
+description = "what you do for the recipient, in one concrete line"
+```
+
+That single file drives the drafter's prompt, the email headers, the Streamlit title and
+the ICP keyword lists. No prompt editing required, and every value can be overridden by an
+environment variable (`SENDER_NAME`, `SENDER_COMPANY`, `SENDER_OFFERING`, `FROM_EMAIL`) for
+deployments.
+
 ---
 
 ## Usage
@@ -145,7 +164,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
 
-162 tests, no network calls — every LLM and search client is mocked, so the suite is free,
+172 tests, no network calls — every LLM and search client is mocked, so the suite is free,
 offline and runs in about a second. That's deliberate: the live models sit behind a 200k
 tokens-per-day cap, and a suite that called them would compete with the eval harness for the
 same budget. Tests and evals answer different questions — tests verify logic, evals score
@@ -204,6 +223,9 @@ queue can be worked straight from the CSV. They are never sent.
 - **The critic checks drafts against sources, not against the research brief** — so it catches
   errors the *enricher* introduced too, not just the drafter's. It has already caught a bad
   unit conversion (Rs 12,626 crore restated as "Rs 12.6 billion", off by 10x)
+- **Sender identity is config, not prompt text** — company, name, offering and ICP keywords
+  live in `persona.toml`. Changing who the emails come from used to mean editing the system
+  prompt, which is the one place an edit silently changes model behaviour
 - **Structured output everywhere, with a plain-JSON fallback** — the drafter returns
   `EmailDraft(subject, body)` instead of a blob a regex has to unpick, so a model that
   forgets the header can't silently turn the first line of the email into its subject. The

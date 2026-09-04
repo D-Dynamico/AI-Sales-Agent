@@ -10,10 +10,11 @@ os.environ["TAVILY_API_KEY"] = st.secrets["TAVILY_API_KEY"]
 
 from agents.enricher import enrich_lead
 from agents.pipeline import draft_with_gate
+from persona import PERSONA
 
 # Page config
 st.set_page_config(
-    page_title="AI Sales Agent · Alchemyst AI",
+    page_title=f"AI Sales Agent · {PERSONA.company}",
     page_icon="⚗️",
     layout="centered",
 )
