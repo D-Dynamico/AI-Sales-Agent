@@ -104,13 +104,12 @@ class TestParallelExecution:
         assert len(results) == 1
         assert results[0][0].angle == "hiring"
 
-    def test_budget_drops_slow_queries_and_keeps_fast_ones(self):
+    def test_every_query_timing_out_is_reported_not_treated_as_empty(self):
         search = FakeSearch(delay=1.5)
         queries = [SearchQuery("funding", "A funding")]
 
-        results = run_lookups(search, queries, budget_seconds=0.3)
-
-        assert results == []
+        with pytest.raises(TimeoutError):
+            run_lookups(search, queries, budget_seconds=0.3)
 
     def test_empty_plan_short_circuits(self):
         search = FakeSearch()
@@ -125,3 +124,29 @@ class TestParallelExecution:
 
         assert query.angle == "funding"
         assert "A funding" in payload["results"][0]["content"]
+
+
+class TestFailuresAreNotSilent:
+    """langchain-tavily returns {"error": exc} for API failures. Treated as data, a bad key
+    on the deployed app made every company look like it had no news at all."""
+
+    class ErrorDictSearch:
+        def invoke(self, query):
+            return {"error": RuntimeError("401 Unauthorized: invalid API key")}
+
+    class NoResultsSearch:
+        def invoke(self, query):
+            raise RuntimeError("No search results found for 'x'. Suggestions: ...")
+
+    def test_error_dict_from_every_angle_raises(self):
+        queries = [SearchQuery("funding", "A funding"), SearchQuery("hiring", "A hiring")]
+        with pytest.raises(RuntimeError, match="invalid API key"):
+            run_lookups(self.ErrorDictSearch(), queries)
+
+    def test_all_angles_raising_surfaces_the_error(self):
+        search = FakeSearch(fail_on={"A"})
+        with pytest.raises(RuntimeError, match="search failed"):
+            run_lookups(search, [SearchQuery("funding", "A funding")])
+
+    def test_genuinely_empty_search_is_not_an_error(self):
+        assert run_lookups(self.NoResultsSearch(), [SearchQuery("funding", "A funding")]) == []

@@ -83,7 +83,20 @@ def plan_lookups(lead: dict, max_queries: int = DEFAULT_MAX_QUERIES) -> list[Sea
 async def _run_one(search, query: SearchQuery):
     """TavilySearch is sync, so it goes to a worker thread — the point is overlapping the
     network waits, and to_thread achieves that without depending on library async support."""
-    return query, await asyncio.to_thread(search.invoke, query.query)
+    result = await asyncio.to_thread(search.invoke, query.query)
+    # langchain-tavily *returns* {"error": exc} on API failures (bad key, exhausted quota,
+    # network) instead of raising. Read as data, that looks exactly like "no results", which
+    # is how a broken key on the deployed app showed every company as having no news.
+    if isinstance(result, dict) and result.get("error"):
+        error = result["error"]
+        raise error if isinstance(error, Exception) else RuntimeError(str(error))
+    return query, result
+
+
+def _is_no_results(exc: Exception) -> bool:
+    """langchain-tavily raises ToolException("No search results found ...") for a genuinely
+    empty search. That is a legitimate outcome, not a failure to report."""
+    return "no search results found" in str(exc).lower()
 
 
 async def _gather(search, queries: list[SearchQuery], budget_seconds: float):
@@ -92,13 +105,21 @@ async def _gather(search, queries: list[SearchQuery], budget_seconds: float):
     for task in pending:
         task.cancel()
 
-    results = []
+    results, errors = [], []
     for task in done:
         try:
             results.append(task.result())
-        except Exception:
+        except Exception as exc:
             # One angle failing is not a failed lead — the others still carry research.
-            continue
+            if not _is_no_results(exc):
+                errors.append(exc)
+
+    # But every angle failing is: surface it, so the UI can say "search is unavailable"
+    # instead of claiming the web has nothing on the company.
+    if not results and errors:
+        raise errors[0]
+    if not results and pending and not done:
+        raise TimeoutError(f"web search timed out after {budget_seconds:.0f}s")
     return results
 
 
