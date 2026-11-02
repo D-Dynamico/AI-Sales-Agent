@@ -16,8 +16,11 @@ PERSONA_FILE = Path(os.getenv("PERSONA_FILE", "persona.toml"))
 # Mirrors persona.toml, so the pipeline still runs if the file is missing or unreadable.
 _DEFAULTS = {
     "sender": {"name": "Rohan Verma", "company": "Aldermere AI", "from_email": "rohan@aldermere.ai"},
-    "offering": {"description": "an AI infrastructure company that helps B2B teams "
-                                "automate sales, marketing, and ops workflows"},
+    "offering": {"description": "an AI revenue-operations platform that researches every "
+                                "target account, drafts outreach grounded in what is actually "
+                                "happening at that company, and keeps CRM data clean and in "
+                                "sync, so B2B sales and growth teams spend their time in "
+                                "conversations rather than on admin"},
     "icp": {
         "description": "B2B teams with a revenue, growth or operations function",
         "functions": ["sales", "marketing", "revenue", "growth", "demand", "outbound",

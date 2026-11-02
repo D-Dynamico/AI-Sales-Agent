@@ -19,8 +19,10 @@ from_email = "rohan@aldermere.ai"
 # One line, in the second person, describing what you do for the recipient. This goes
 # straight into the drafter's system prompt, so keep it concrete — vague value props are
 # what produce the generic emails the eval judge scores 2/5.
-description = """an AI infrastructure company that helps B2B teams automate sales, \
-marketing, and ops workflows"""
+description = """an AI revenue-operations platform that researches every target account, \
+drafts outreach grounded in what is actually happening at that company, and keeps CRM data \
+clean and in sync, so B2B sales and growth teams spend their time in conversations rather \
+than on admin"""
 
 [icp]
 # Prose description of the target buyer. Used in prompts and as documentation for the
