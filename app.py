@@ -4,7 +4,9 @@ import io
 import os
 import sys
 import time
+from datetime import datetime
 
+import pandas as pd
 import streamlit as st
 
 # Keys come from Streamlit Cloud secrets when deployed, and from .env when run locally.
@@ -47,6 +49,7 @@ def _build_id() -> str:
 
 
 BUILD = _build_id()
+LEAD_COLUMNS = ["name", "role", "company", "email", "website"]
 REQUIRED_COLUMNS = ("name", "role", "company", "email")
 CSV_FIELDS = ["name", "role", "company", "email", "status", "subject",
               "claims_total", "claims_grounded", "critique", "draft"]
@@ -56,98 +59,123 @@ Priya Sharma,Head of Sales,Razorpay,priya@razorpay.com,razorpay.com
 Arjun Mehta,VP Marketing,Zepto,arjun@zepto.team,zeptonow.com
 Neha Gupta,Co-founder,Sarvam AI,neha@sarvam.ai,sarvam.ai"""
 
-st.set_page_config(
-    page_title=f"Outreach · {PERSONA.company}",
-    page_icon="✉️",
-    layout="wide",
-)
+st.set_page_config(page_title=f"Outreach · {PERSONA.company}", page_icon="✉️",
+                   layout="wide")
 
-# ── Styles ────────────────────────────────────────────────────────────────────
-# One grotesk, near-black ink on a warm off-white ground, white panels split by 1px
-# lines. Colour is reserved for status: green verified, amber held, red failed.
+# ── Style: framed sheet ───────────────────────────────────────────────────────
+# The sidebar and Streamlit's top bar share one tinted frame (an alder green-grey, from
+# "Aldermere"); the work sits on a white sheet inset 8px, 16px corners, a 1px edge, no
+# shadow. Colour is for status and for the one data hue (teal) on the claim trace.
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap');
-
-html, body, [class*="st-"], .stMarkdown, button, input, textarea {
-    font-family: "Instrument Sans", system-ui, sans-serif !important;
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+:root {
+  --frame: #eff3f1; --surface: #ffffff; --raised: #f5f7f6; --active: #e6ebe8;
+  --border: #e3e8e5; --rule: #eef1ef; --control: #cdd3cf;
+  --text: #131416; --muted: #5a5f5c;
+  --accent: #1b6c80; --positive: #1e7b4f; --negative: #c4242a; --warning: #92400e;
 }
-/* Streamlit's icon font must survive the override above. */
+html, body, [class*="st-"], .stMarkdown, button, input, textarea, [data-testid="stWidgetLabel"] {
+  font-family: "IBM Plex Sans", Inter, system-ui, sans-serif !important;
+}
 [data-testid="stIconMaterial"], .material-symbols-rounded, span[class*="material"] {
-    font-family: "Material Symbols Rounded" !important;
+  font-family: "Material Symbols Rounded" !important;
 }
-.block-container { padding-top: 2.25rem; padding-bottom: 4rem; max-width: 1240px; }
-h1, h2, h3 { letter-spacing: -0.01em; }
+
+/* The frame: app ground, Streamlit's header and the sidebar all one tint, no rules. */
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] { background: var(--frame); }
+[data-testid="stHeader"] { background: var(--frame); }
+[data-testid="stSidebar"] { background: var(--frame); border-right: none; }
+[data-testid="stSidebar"] > div { background: var(--frame); }
+
+/* The sheet. Its top margin clears Streamlit's own header bar, which is what cut the
+   title off before. */
+[data-testid="stMainBlockContainer"] {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  margin: 3.75rem 8px 8px 0; padding: 28px 32px 48px !important; max-width: none;
+}
+@media (max-width: 640px) {
+  [data-testid="stMainBlockContainer"] { margin: 3.5rem 0 0 0; border-radius: 0;
+      border-width: 1px 0 0; padding: 20px 16px 40px !important; }
+}
 
 /* Title row */
-.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
-.brand-mark {
-    width: 28px; height: 28px; border-radius: 6px; background: #1d1f20; color: #fff;
-    display: grid; place-items: center; font-weight: 700; font-size: 15px;
-}
-.brand-name { font-weight: 600; font-size: 15px; }
-.brand-scope { color: #5f6368; font-size: 14px; }
-.title-row h1 { font-size: 26px; font-weight: 700; margin: 0; padding: 0; line-height: 1.2; }
-.title-row p { color: #5f6368; font-size: 15px; margin: 6px 0 0; max-width: 62ch; }
+.crumb { color: var(--muted); font-size: 14px; margin-bottom: 4px; }
+.crumb b { color: var(--text); font-weight: 600; }
+.title-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px;
+             flex-wrap: wrap; padding-bottom: 18px; border-bottom: 1px solid var(--rule);
+             margin-bottom: 24px; }
+.title-row h1 { font-size: 22px; font-weight: 600; margin: 0; padding: 0; line-height: 1.3;
+                letter-spacing: -0.01em; }
+.title-row p { color: var(--muted); font-size: 14px; margin: 4px 0 0; max-width: 70ch; }
+.stamp { color: var(--muted); font-size: 13px; white-space: nowrap; }
 
-/* Panel headings */
-.panel-h { font-size: 16px; font-weight: 600; margin: 0 0 2px; }
-.panel-sub { color: #5f6368; font-size: 13px; margin: 0 0 12px; }
+/* Section headings inside the sheet */
+.sec-h { font-size: 16px; font-weight: 600; margin: 0; }
+.sec-sub { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
 
-/* Summary strip: one container split by hairlines, label over value */
-.summary { display: grid; grid-template-columns: repeat(3, 1fr); background: #fff;
-           border: 1px solid #e6e6e3; border-radius: 8px; margin-bottom: 8px; }
-.summary > div { padding: 14px 18px; }
-.summary > div + div { border-left: 1px solid #e6e6e3; }
-.summary .label { color: #5f6368; font-size: 13px; }
-.summary .value { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums;
-                  line-height: 1.25; }
-.summary .value.ok { color: #247b50; }
-.summary .value.held { color: #92400e; }
-.summary .value.err { color: #c4242a; }
-.finding { font-size: 14px; color: #141414; margin: 10px 0 18px; }
+/* Sidebar */
+.mark { display: flex; align-items: center; gap: 10px; margin: 4px 0 20px; }
+.mark-box { width: 28px; height: 28px; border-radius: 7px; background: var(--accent); color: #fff;
+            display: grid; place-items: center; font-weight: 600; font-size: 14px; }
+.mark-name { font-weight: 600; font-size: 15px; }
+.side-label { color: var(--muted); font-size: 12px; margin: 0 0 2px; }
+.side-value { font-size: 14px; margin: 0 0 14px; }
+.side-note { color: var(--muted); font-size: 13px; line-height: 1.5; }
 
-/* Lead header */
-.lead-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.lead-name { font-weight: 600; font-size: 16px; }
-.lead-meta { color: #5f6368; font-size: 14px; }
+/* Lead cards */
+.lead-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.lead-name { font-weight: 600; font-size: 15px; }
+.lead-meta { color: var(--muted); font-size: 14px; }
+.lead-facts { color: var(--muted); font-size: 13px; margin: 2px 0 14px;
+              font-variant-numeric: tabular-nums; }
 .pill { flex: none; white-space: nowrap; font-size: 12px; font-weight: 500;
         padding: 2px 9px; border-radius: 999px; }
 .pill.ok   { background: #dcfae5; color: #04250e; }
 .pill.held { background: #fffbeb; color: #92400e; box-shadow: inset 0 0 0 1px #fde68a; }
 .pill.err  { background: #ffedea; color: #831c1e; }
-.lead-facts { color: #5f6368; font-size: 13px; margin: 2px 0 10px; }
-
-.subject { font-weight: 600; font-size: 15px; margin: 4px 0 6px; }
+.subject { font-weight: 600; font-size: 15px; margin: 0 0 8px; }
 .notice { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 6px;
-          padding: 10px 12px; font-size: 13.5px; margin: 0 0 10px; }
+          padding: 10px 12px; font-size: 13.5px; margin: 0 0 12px; line-height: 1.5; }
 .failure { background: #ffedea; color: #831c1e; border-radius: 6px; padding: 10px 12px;
-           font-size: 14px; margin: 4px 0 8px; }
-.empty { border: 1px dashed #d4d4d0; border-radius: 8px; padding: 28px 24px; color: #5f6368;
-         font-size: 14px; background: #fff; }
-.empty strong { color: #141414; display: block; font-size: 15px; margin-bottom: 4px; }
+           font-size: 14px; margin: 8px 0; }
 
-/* The email body uses st.code for its copy button, set in the text face so it reads as
-   an email rather than a code block. */
+/* The claim trace: one mark per factual claim. Teal = traced to a source. */
+.trace-h { font-size: 13px; font-weight: 600; margin: 0 0 6px; }
+.trace-h span { color: var(--muted); font-weight: 400; }
+.trace { display: flex; gap: 4px; margin: 0 0 12px; }
+.trace i { width: 22px; height: 8px; border-radius: 2px; background: var(--accent); }
+.trace i.miss { background: transparent; box-shadow: inset 0 0 0 1.5px var(--negative); }
+.claim { font-size: 13px; line-height: 1.45; margin: 0 0 8px; padding-left: 12px;
+         border-left: 2px solid var(--accent); }
+.claim.miss { border-left-color: var(--negative); }
+.claim q { display: block; color: var(--muted); margin-top: 2px; }
+.claim .tag { color: var(--negative); font-weight: 500; }
+
+.empty { border: 1px dashed var(--control); border-radius: 8px; padding: 22px 20px;
+         color: var(--muted); font-size: 14px; }
+.empty b { color: var(--text); display: block; font-size: 15px; margin-bottom: 4px; font-weight: 600; }
+.finding { font-size: 14px; margin: 4px 0 16px; }
+
+/* Email body: st.code for its copy button, set in the text face so it reads as an email. */
 [data-testid="stCode"] pre, [data-testid="stCode"] code {
-    font-family: "Instrument Sans", system-ui, sans-serif !important;
-    font-size: 14.5px !important; line-height: 1.6 !important; white-space: pre-wrap !important;
-    background: #fafaf8 !important; color: #141414 !important;
+  font-family: "IBM Plex Sans", system-ui, sans-serif !important; font-size: 14.5px !important;
+  line-height: 1.65 !important; white-space: pre-wrap !important;
+  background: var(--raised) !important; color: var(--text) !important;
 }
 [data-testid="stCode"] pre { padding: 14px 16px !important; border-radius: 6px; }
 
-/* Leads are CSV: one lead per line reads far better than wrapped mid-address. */
-[data-testid="stTextArea"] textarea { white-space: pre !important; overflow-x: auto !important;
-    overflow-wrap: normal !important; font-size: 13.5px !important; line-height: 1.7 !important; }
-
-.foot { color: #6b6b6b; font-size: 12px; margin-top: 8px; }
+/* Bordered containers are the cards: one edge colour, 8px corners, no shadow. */
+[data-testid="stVerticalBlockBorderWrapper"] { border-color: var(--border) !important;
+                                               border-radius: 8px !important; }
+.foot { color: var(--muted); font-size: 12px; margin-top: 8px; }
 </style>
 """, unsafe_allow_html=True)
 
 E = html.escape  # every lead field is user input and goes into HTML below
 
 
-# ── Sidebar: who is sending, and diagnostics ──────────────────────────────────
+# ── Sidebar (the frame) ───────────────────────────────────────────────────────
 def _key_shape(name: str, prefix: str) -> str:
     raw = os.environ.get(name, "")
     if not raw:
@@ -165,16 +193,17 @@ def _key_shape(name: str, prefix: str) -> str:
 
 
 with st.sidebar:
-    st.markdown(f"**Sending as**  \n{E(PERSONA.name)}, {E(PERSONA.company)}")
-    st.caption(PERSONA.offering[:1].upper() + PERSONA.offering[1:] + ".")
-    st.divider()
-    st.markdown("**How a draft is checked**")
-    st.caption(
-        "Each company is researched live with Tavily. The email is drafted from that "
-        "research, then every factual claim is checked against the sources. Drafts with "
-        "untraceable claims are rewritten once, then held for you to review."
-    )
-    st.divider()
+    st.markdown(f"""
+<div class="mark"><div class="mark-box">{E(PERSONA.company[:1])}</div>
+<span class="mark-name">{E(PERSONA.company)}</span></div>
+<div class="side-label">Sending as</div>
+<div class="side-value">{E(PERSONA.name)}</div>
+<div class="side-label">How drafts are checked</div>
+<div class="side-note">Each company is researched live. The email is written from that research,
+and every factual claim in it is matched against the sources. A draft with a claim that can't be
+matched is rewritten once, then held for you.</div>
+""", unsafe_allow_html=True)
+    st.write("")
     with st.expander("Diagnostics"):
         if st.button("Test web search and model"):
             st.text(_key_shape("TAVILY_API_KEY", "tvly-"))
@@ -202,110 +231,135 @@ with st.sidebar:
     st.caption(f"GPT-OSS 120B on Groq · Tavily search · build {BUILD}")
 
 
-# ── Title row ─────────────────────────────────────────────────────────────────
-st.markdown(f"""
-<div class="brand">
-  <div class="brand-mark">{E(PERSONA.company[:1])}</div>
-  <span class="brand-name">{E(PERSONA.company)}</span>
-  <span class="brand-scope">· Outreach</span>
-</div>
-<div class="title-row">
-  <h1>Research and draft cold emails</h1>
-  <p>Paste a lead list. Each company is researched live, an email is drafted from what was
-  found, and every claim in it is checked against the sources before it's marked ready.</p>
-</div>
-""", unsafe_allow_html=True)
-st.write("")
+# ── Leads: data ───────────────────────────────────────────────────────────────
+def df_from_csv(text: str) -> tuple[pd.DataFrame | None, str]:
+    try:
+        rows = list(csv.DictReader(io.StringIO(text.strip())))
+    except Exception as e:
+        return None, f"Couldn't read that as CSV: {e}"
+    if not rows:
+        return None, "No leads found. Add a header row and at least one lead."
+    normalised = [{(k or "").strip().lower(): (v or "").strip() for k, v in r.items()}
+                  for r in rows]
+    missing = [c for c in REQUIRED_COLUMNS if c not in normalised[0]]
+    if missing:
+        return None, f"Missing column{'s' if len(missing) > 1 else ''}: {', '.join(missing)}."
+    clean = [{c: r.get(c, "") for c in LEAD_COLUMNS} for r in normalised]
+    return pd.DataFrame(clean, columns=LEAD_COLUMNS), ""
 
 
-# ── Rendering ─────────────────────────────────────────────────────────────────
-STATUS_PILL = {
+def leads_from_df(df: pd.DataFrame) -> tuple[list[dict], list[str]]:
+    leads, problems = [], []
+    for i, row in enumerate(df.fillna("").to_dict("records"), start=1):
+        lead = {c: str(row.get(c, "") or "").strip() for c in LEAD_COLUMNS}
+        if not any(lead.values()):
+            continue  # a blank row added in the editor
+        missing = [c for c in REQUIRED_COLUMNS if not lead[c]]
+        if missing:
+            problems.append(f"Row {i} is missing {', '.join(missing)}.")
+        leads.append(lead)
+    return leads, problems
+
+
+if "leads_df" not in st.session_state:
+    st.session_state.leads_df, _ = df_from_csv(SAMPLE)
+    st.session_state.editor_version = 0
+
+
+# ── Results: rendering ────────────────────────────────────────────────────────
+STATUS = {
     "APPROVED": ("ok", "Ready to send"),
     "NEEDS_REVIEW": ("held", "Held for review"),
     "ENRICH_ERROR": ("err", "Research failed"),
     "DRAFT_ERROR": ("err", "Drafting failed"),
 }
+FILTER_OF = {"APPROVED": "Ready", "NEEDS_REVIEW": "Held",
+             "ENRICH_ERROR": "Failed", "DRAFT_ERROR": "Failed"}
+
+
+def plural(n: int, word: str) -> str:
+    return f"{n} {word}{'' if n == 1 else 's'}"
+
+
+def claim_trace_html(claims: list[dict]) -> str:
+    traced = sum(c["grounded"] for c in claims)
+    if not claims:
+        return ('<div class="trace-h">Claim trace <span>· no specific claims to check'
+                '</span></div>')
+    marks = "".join("<i></i>" if c["grounded"] else '<i class="miss"></i>' for c in claims)
+    items = []
+    for c in claims:
+        tag = "" if c["grounded"] else '<span class="tag">Not in sources · </span>'
+        # Source quotes often arrive already wrapped in quote marks; strip them so the
+        # page doesn't show doubled ones.
+        raw_quote = (c.get("quote") or "").strip().strip('"“”'').strip()
+        quote = f"<q>“{E(raw_quote[:220])}”</q>" if raw_quote else ""
+        cls = "claim" if c["grounded"] else "claim miss"
+        items.append(f'<div class="{cls}">{tag}{E(c["text"])}{quote}</div>')
+    return (f'<div class="trace-h">Claim trace <span>· {traced} of {len(claims)} traced to a '
+            f'source</span></div><div class="trace">{marks}</div>{"".join(items)}')
 
 
 def render_lead(r: dict) -> None:
-    kind, label = STATUS_PILL.get(r["status"], ("err", r["status"]))
+    kind, label = STATUS.get(r["status"], ("err", r["status"]))
     with st.container(border=True):
         st.markdown(f"""
 <div class="lead-head">
-  <div><span class="lead-name">{E(r.get('name', ''))}</span>
-       <span class="lead-meta"> · {E(r.get('role', ''))} at {E(r.get('company', ''))}</span></div>
+  <div><span class="lead-name">{E(r['name'])}</span>
+       <span class="lead-meta"> · {E(r['role'])} at {E(r['company'])}</span></div>
   <span class="pill {kind}">{label}</span>
 </div>""", unsafe_allow_html=True)
 
         if r.get("error"):
-            st.markdown(f'<div class="failure">{E(r["error"])}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="lead-facts">{E(r["email"])}</div>'
+                        f'<div class="failure">{E(r["error"])}</div>', unsafe_allow_html=True)
             if r.get("error_detail"):
                 with st.expander("Technical detail"):
-                    st.code(r["error_detail"], language=None)
+                    st.code(r["error_detail"], language=None, wrap_lines=True)
             return
 
-        n_src = len(r.get("sources", []))
-        facts = [f"{E(r.get('email', ''))}", f"{n_src} source{'s' if n_src != 1 else ''}"]
-        if r.get("claims_total"):
-            facts.append(f"{r['claims_grounded']} of {r['claims_total']} claims traced")
-        facts.append(f"{r['attempts']} attempt{'s' if r['attempts'] != 1 else ''}")
+        facts = [E(r["email"]), plural(len(r.get("sources", [])), "source"),
+                 plural(r["attempts"], "attempt")]
         st.markdown(f'<div class="lead-facts">{" · ".join(facts)}</div>',
                     unsafe_allow_html=True)
 
-        if r["status"] == "NEEDS_REVIEW" and r.get("critique"):
-            # The critic writes a bullet list; one reason per line reads better than dashes.
-            reasons = [line.strip().lstrip("-•* ").strip()
-                       for line in r["critique"].splitlines() if line.strip()]
-            body = "<br>".join(E(x) for x in reasons if x)
-            st.markdown(f'<div class="notice"><strong>Why it was held</strong><br>{body}</div>',
-                        unsafe_allow_html=True)
+        email_col, trace_col = st.columns([3, 2], gap="large")
+        with email_col:
+            if r["status"] == "NEEDS_REVIEW" and r.get("critique"):
+                reasons = [ln.strip().lstrip("-•* ").strip()
+                           for ln in r["critique"].splitlines() if ln.strip()]
+                st.markdown('<div class="notice"><b>Why it was held</b><br>'
+                            + "<br>".join(E(x) for x in reasons if x) + "</div>",
+                            unsafe_allow_html=True)
+            st.markdown(f'<div class="subject">{E(r["subject"])}</div>', unsafe_allow_html=True)
+            st.code(r["draft"], language=None, wrap_lines=True)
 
-        st.markdown(f'<div class="subject">{E(r.get("subject", ""))}</div>',
-                    unsafe_allow_html=True)
-        st.code(r.get("draft", ""), language=None, wrap_lines=True)
-
-        c1, c2 = st.columns(2)
-        with c1:
-            with st.expander(f"Research brief · {n_src} source{'s' if n_src != 1 else ''}"):
+        with trace_col:
+            st.markdown(claim_trace_html(r.get("claims", [])), unsafe_allow_html=True)
+            with st.expander(f"Research brief · {plural(len(r.get('sources', [])), 'source')}"):
                 st.write(r.get("research", ""))
                 for src in r.get("sources", []):
                     st.caption(src[:400])
-        with c2:
-            claims = r.get("claims", [])
-            with st.expander(f"Claim check · {r.get('claims_grounded', 0)} of "
-                             f"{len(claims)} traced"):
-                if not claims:
-                    st.caption("The draft makes no specific factual claims to check.")
-                for c in claims:
-                    st.markdown(f"{'Traced' if c['grounded'] else '**Not found in sources**'}"
-                                f" — {c['text']}")
-                    if c.get("quote"):
-                        st.caption(f"“{c['quote'][:300]}”")
 
 
-def render_summary(results: list[dict], total: int) -> None:
-    ready = sum(r["status"] == "APPROVED" for r in results)
-    held = sum(r["status"] == "NEEDS_REVIEW" for r in results)
-    failed = len(results) - ready - held
-    st.markdown(f"""
-<div class="summary">
-  <div><div class="label">Ready</div><div class="value {'ok' if ready else ''}">{ready}</div></div>
-  <div><div class="label">Held</div><div class="value {'held' if held else ''}">{held}</div></div>
-  <div><div class="label">Failed</div><div class="value {'err' if failed else ''}">{failed}</div></div>
-</div>""", unsafe_allow_html=True)
+def counts(results: list[dict]) -> dict:
+    c = {"All": len(results), "Ready": 0, "Held": 0, "Failed": 0}
+    for r in results:
+        c[FILTER_OF.get(r["status"], "Failed")] += 1
+    return c
 
-    if len(results) < total:
-        finding = f"Working through lead {len(results) + 1} of {total}…"
-    elif held or failed:
-        parts = []
-        if held:
-            parts.append(f"{held} held because some claims couldn't be traced to the research")
-        if failed:
-            parts.append(f"{failed} failed — see the reason on each")
-        finding = f"{ready} of {total} ready to send. " + "; ".join(parts) + "."
-    else:
-        finding = f"All {total} drafts are ready to send — every claim traced to a source."
-    st.markdown(f'<div class="finding">{finding}</div>', unsafe_allow_html=True)
+
+def finding(c: dict) -> str:
+    if not c["All"]:
+        return ""
+    if c["Ready"] == c["All"]:
+        return f"All {c['All']} drafts are ready to send. Every claim traced to a source."
+    parts = [f"{c['Ready']} of {c['All']} ready to send"]
+    if c["Held"]:
+        parts.append(f"{c['Held']} held because a claim couldn't be traced to the research")
+    if c["Failed"]:
+        parts.append(f"{c['Failed']} failed. The reason is on each card")
+    return ". ".join(parts) + "."
 
 
 def results_csv(results: list[dict]) -> str:
@@ -318,114 +372,155 @@ def results_csv(results: list[dict]) -> str:
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 def process(lead: dict) -> dict:
-    name = lead.get("name", "").strip()
-    company = lead.get("company", "").strip()
-    base = {k: (lead.get(k) or "").strip() for k in ("name", "role", "company", "email")}
-
+    base = {k: lead.get(k, "") for k in ("name", "role", "company", "email")}
     try:
         research, sources = enrich_lead(lead)
     except Exception as e:
-        print(f"[enrich] {company}: {log_detail(e)}", file=sys.stderr)
+        print(f"[enrich] {lead['company']}: {log_detail(e)}", file=sys.stderr)
         return {**base, "status": "ENRICH_ERROR", "draft": "",
                 "error": user_message(e, "researching this company"),
                 "error_detail": log_detail(e)}
-
     try:
         gated = draft_with_gate(lead, research, sources)
     except Exception as e:
-        print(f"[draft] {name}: {log_detail(e)}", file=sys.stderr)
+        print(f"[draft] {lead['name']}: {log_detail(e)}", file=sys.stderr)
         return {**base, "status": "DRAFT_ERROR", "draft": "",
                 "error": user_message(e, "drafting this email"),
                 "error_detail": log_detail(e)}
 
     draft, verdict = gated.draft, gated.verdict
     return {
-        **base,
-        "status": gated.status,
-        "subject": draft.subject,
-        "draft": draft.body,
-        "claims_total": len(verdict.claims),
-        "claims_grounded": len(verdict.grounded_claims),
-        "critique": verdict.critique,
-        "attempts": gated.attempts,
-        "research": research,
-        "sources": sources,
+        **base, "status": gated.status, "subject": draft.subject, "draft": draft.body,
+        "claims_total": len(verdict.claims), "claims_grounded": len(verdict.grounded_claims),
+        "critique": verdict.critique, "attempts": gated.attempts,
+        "research": research, "sources": sources,
         "claims": [{"text": c.text, "grounded": c.grounded, "quote": c.source_quote}
                    for c in verdict.claims],
     }
 
 
-def parse_leads(text: str) -> tuple[list[dict], str]:
-    try:
-        leads = list(csv.DictReader(io.StringIO(text.strip())))
-    except Exception as e:
-        return [], f"Couldn't read that as CSV: {e}"
-    if not leads:
-        return [], "No leads found. Add a header row and at least one lead."
-    missing = [c for c in REQUIRED_COLUMNS if c not in (leads[0].keys() or [])]
-    if missing:
-        return [], f"Missing column{'s' if len(missing) > 1 else ''}: {', '.join(missing)}."
-    return leads, ""
+# ── Title row ─────────────────────────────────────────────────────────────────
+last = st.session_state.get("last_run")
+stamp = (f"Last run {last['at']} · {plural(last['n'], 'lead')} · {last['took']}"
+         if last else "No runs yet")
+st.markdown(f"""
+<div class="crumb">{E(PERSONA.company)} / <b>Outreach</b></div>
+<div class="title-row">
+  <div><h1>Research and draft cold emails</h1>
+  <p>Add leads, run the agent, and send the drafts marked ready. Each one is written from live
+  research, and every claim in it is checked against the sources.</p></div>
+  <div class="stamp">{stamp}</div>
+</div>""", unsafe_allow_html=True)
 
 
-# ── Layout: leads on the left, results on the right ───────────────────────────
-left, right = st.columns([5, 8], gap="large")
+# ── Leads ─────────────────────────────────────────────────────────────────────
+head_l, head_r = st.columns([3, 1], vertical_alignment="bottom")
+with head_l:
+    st.markdown('<div class="sec-h">Leads</div><div class="sec-sub">One row per person. Name, '
+                'role, company and email are required; website is optional. Add a row at the '
+                'bottom of the table, or paste a CSV below.</div>', unsafe_allow_html=True)
 
-with left:
-    with st.container(border=True):
-        st.markdown('<div class="panel-h">Leads</div>'
-                    '<div class="panel-sub">CSV with a header row: name, role, company, '
-                    'email, and optionally website.</div>', unsafe_allow_html=True)
-        csv_input = st.text_area("Leads CSV", value=SAMPLE, height=220,
-                                 label_visibility="collapsed")
-        leads, problem = parse_leads(csv_input)
+edited = st.data_editor(
+    st.session_state.leads_df,
+    key=f"leads_editor_{st.session_state.editor_version}",
+    num_rows="dynamic",
+    hide_index=True,
+    use_container_width=True,
+    column_config={
+        "name": st.column_config.TextColumn("Name"),
+        "role": st.column_config.TextColumn("Role"),
+        "company": st.column_config.TextColumn("Company"),
+        "email": st.column_config.TextColumn("Email"),
+        "website": st.column_config.TextColumn("Website"),
+    },
+)
+leads, problems = leads_from_df(edited)
+
+with head_r:
+    run_btn = st.button(f"Research and draft {plural(len(leads), 'lead')}" if leads
+                        else "Research and draft", type="primary",
+                        use_container_width=True, disabled=bool(problems) or not leads)
+
+if problems:
+    st.markdown('<div class="failure">' + "<br>".join(E(p) for p in problems) + "</div>",
+                unsafe_allow_html=True)
+else:
+    st.caption(f"About {max(1, round(len(leads) * 0.6))} min to research and draft "
+               f"{'this lead' if len(leads) == 1 else 'these leads'}.")
+
+with st.expander("Paste a CSV instead"):
+    pasted = st.text_area(
+        "CSV with a header row", height=140,
+        placeholder="name,role,company,email,website\n"
+                    "Priya Sharma,Head of Sales,Razorpay,priya@razorpay.com,razorpay.com")
+    if st.button("Replace the table with this CSV", disabled=not pasted.strip()):
+        df, problem = df_from_csv(pasted)
         if problem:
             st.markdown(f'<div class="failure">{E(problem)}</div>', unsafe_allow_html=True)
         else:
-            st.caption(f"{len(leads)} lead{'s' if len(leads) != 1 else ''} · about "
-                       f"{max(1, round(len(leads) * 0.6))} min to research and draft")
-        run_btn = st.button("Research and draft", type="primary", use_container_width=True,
-                            disabled=bool(problem))
+            st.session_state.leads_df = df
+            st.session_state.editor_version += 1
+            st.rerun()
 
-with right:
-    if run_btn and leads:
-        st.session_state.results = []
-        st.session_state.total = len(leads)
-        summary_slot = st.empty()
-        progress = st.progress(0.0)
-        for i, lead in enumerate(leads):
-            with summary_slot.container():
-                render_summary(st.session_state.results, len(leads))
-            with st.spinner(f"Researching {lead.get('company', '').strip() or 'company'} "
-                            f"and drafting for {lead.get('name', '').strip() or 'lead'}…"):
-                result = process(lead)
-            st.session_state.results.append(result)
-            progress.progress((i + 1) / len(leads))
-            render_lead(result)
-            if i < len(leads) - 1:
-                time.sleep(1)
-        progress.empty()
-        with summary_slot.container():
-            render_summary(st.session_state.results, len(leads))
+st.write("")
 
-    elif st.session_state.get("results"):
-        # Stored, so downloading the CSV (which reruns the script) doesn't wipe the results.
-        render_summary(st.session_state.results, st.session_state.total)
-        for r in st.session_state.results:
-            render_lead(r)
 
-    else:
-        st.markdown("""
-<div class="empty">
-  <strong>No drafts yet</strong>
-  Run the agent on your lead list. Each lead appears here with its status, the email
-  ready to copy, the research it was written from, and which claims were traced to a source.
-</div>""", unsafe_allow_html=True)
+# ── Drafts ────────────────────────────────────────────────────────────────────
+if run_btn and leads:
+    started = time.time()
+    st.session_state.results = []
+    st.markdown('<div class="sec-h">Drafts</div>', unsafe_allow_html=True)
+    status_line = st.empty()
+    progress = st.progress(0.0)
+    for i, lead in enumerate(leads):
+        status_line.markdown(f'<div class="finding">Researching {E(lead["company"])} and '
+                             f'drafting for {E(lead["name"])} · lead {i + 1} of '
+                             f'{len(leads)}</div>', unsafe_allow_html=True)
+        result = process(lead)
+        st.session_state.results.append(result)
+        progress.progress((i + 1) / len(leads))
+        render_lead(result)
+        if i < len(leads) - 1:
+            time.sleep(1)
+    took = int(time.time() - started)
+    st.session_state.last_run = {"at": datetime.now().strftime("%H:%M"), "n": len(leads),
+                                 "took": f"{took // 60} min {took % 60:02d} s"}
+    st.session_state.pop("draft_filter", None)
+    st.rerun()  # redraw from the stored results, with the filter
 
-    results = st.session_state.get("results")
-    if results and len(results) == st.session_state.get("total"):
-        st.download_button("Download results CSV", data=results_csv(results),
+results = st.session_state.get("results") or []
+c = counts(results)
+
+dh_l, dh_r = st.columns([3, 1], vertical_alignment="bottom")
+with dh_l:
+    st.markdown(f'<div class="sec-h">Drafts</div>'
+                f'<div class="sec-sub">{finding(c) or "Drafts appear here after a run."}</div>',
+                unsafe_allow_html=True)
+with dh_r:
+    if results:
+        st.download_button("Download CSV", data=results_csv(results),
                            file_name="outreach_results.csv", mime="text/csv",
                            use_container_width=True)
-        st.markdown('<div class="foot">Held drafts are included with the reason they were '
-                    'held. Don’t send them as-is.</div>', unsafe_allow_html=True)
+st.write("")
+
+if not results:
+    st.markdown("""
+<div class="empty"><b>No drafts yet</b>
+Run the agent on the leads above. Each lead shows up here with its status, the email ready to
+copy, the research it was written from, and a trace of which claims matched a source.</div>""",
+                unsafe_allow_html=True)
+else:
+    choice = st.segmented_control(
+        "Show", options=["All", "Ready", "Held", "Failed"],
+        format_func=lambda o: f"{o} · {c[o]}", default="All", key="draft_filter",
+        label_visibility="collapsed",
+    ) or "All"
+    shown = [r for r in results if choice == "All" or FILTER_OF.get(r["status"]) == choice]
+    if not shown:
+        st.markdown(f'<div class="empty">No {choice.lower()} drafts in this run.</div>',
+                    unsafe_allow_html=True)
+    for r in shown:
+        render_lead(r)
+    if c["Held"]:
+        st.markdown('<div class="foot">Held drafts are in the CSV with the reason they were '
+                    'held. Don’t send them as they are.</div>', unsafe_allow_html=True)
