@@ -84,6 +84,54 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Diagnostics — checks the deployed environment directly. Never shows key values, only
+# their shape, and every error goes through the same redaction as the logs.
+def _key_shape(name: str, prefix: str) -> str:
+    raw = os.environ.get(name, "")
+    if not raw:
+        return f"{name}: MISSING"
+    problems = []
+    if raw != raw.strip():
+        problems.append("leading/trailing whitespace")
+    if raw.strip()[:1] in "\"'" or raw.strip()[-1:] in "\"'":
+        problems.append("wrapped in quotes")
+    if not raw.strip().strip("\"'").startswith(prefix):
+        problems.append(f"does not start with '{prefix}'")
+    status = "; ".join(problems) if problems else "looks well-formed"
+    return f"{name}: present, {len(raw)} chars, {status}"
+
+
+with st.sidebar.expander("Diagnostics"):
+    st.caption(f"build {BUILD}")
+    if st.button("Test web search and model"):
+        st.text(_key_shape("TAVILY_API_KEY", "tvly-"))
+        st.text(_key_shape("GROQ_API_KEY", "gsk_"))
+        try:
+            from importlib.metadata import version
+            st.text(f"langchain-tavily {version('langchain-tavily')}")
+        except Exception:
+            pass
+
+        try:
+            from langchain_tavily import TavilySearch
+            raw = TavilySearch(max_results=3, topic="news", search_depth="advanced").invoke(
+                "Razorpay funding round recent news")
+            if isinstance(raw, dict) and raw.get("error"):
+                st.error(f"Tavily returned an error: {log_detail(raw['error']) if isinstance(raw['error'], Exception) else raw['error']}")
+            else:
+                n = len(raw.get("results", [])) if isinstance(raw, dict) else 0
+                st.success(f"Tavily OK: {n} result(s)")
+        except Exception as e:
+            st.error(f"Tavily raised: {log_detail(e)}")
+
+        try:
+            from langchain_groq import ChatGroq
+            from config import PIPELINE_MODEL
+            ChatGroq(model=PIPELINE_MODEL, max_retries=0, timeout=30).invoke("Reply with: ok")
+            st.success(f"Groq OK ({PIPELINE_MODEL})")
+        except Exception as e:
+            st.error(f"Groq raised: {log_detail(e)}")
+
 # Header
 st.markdown("## AI Sales Outreach Agent")
 st.markdown(
