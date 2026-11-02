@@ -19,9 +19,10 @@ for _key in ("GROQ_API_KEY", "TAVILY_API_KEY"):
     except Exception:
         pass  # no secrets.toml locally — the .env value stands
 
-from agents.enricher import enrich_lead
+from agents.enricher import research_company
 from agents.errors import log_detail, user_message
 from agents.pipeline import draft_with_gate
+from agents.sources import parse_source
 from persona import PERSONA
 
 
@@ -151,6 +152,25 @@ html, body, [class*="st-"], .stMarkdown, button, input, textarea, [data-testid="
 .claim.miss { border-left-color: var(--negative); }
 .claim q { display: block; color: var(--muted); margin-top: 2px; }
 .claim .tag { color: var(--negative); font-weight: 500; }
+
+/* Research brief */
+.rb-h { font-size: 13px; font-weight: 600; margin: 4px 0 10px; }
+.rb-h span { color: var(--muted); font-weight: 400; }
+.rb-gap { margin-top: 20px; }
+.ev { font-size: 14px; line-height: 1.5; padding: 8px 0; border-top: 1px solid var(--rule); }
+.rb-h + .ev { border-top: none; padding-top: 0; }
+.ev-kind { display: block; color: var(--muted); font-size: 12px; margin-bottom: 1px; }
+.hyp { font-size: 13.5px; line-height: 1.5; color: var(--muted); padding-left: 12px;
+       border-left: 2px solid var(--rule); margin: 0 0 8px; }
+.rb-none { color: var(--muted); font-size: 14px; }
+.src { padding: 9px 0; border-top: 1px solid var(--rule); }
+.rb-h + .src { border-top: none; padding-top: 0; }
+.src-t { font-size: 14px; font-weight: 500; line-height: 1.4; }
+.src-t a { color: var(--text) !important; text-decoration: none; }
+.src-t a:hover { color: var(--accent) !important; text-decoration: underline; }
+.src-meta { color: var(--muted); font-size: 12px; margin: 1px 0 3px; }
+.src-snip { color: var(--muted); font-size: 13px; line-height: 1.5; display: -webkit-box;
+            -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
 .empty { border: 1px dashed var(--control); border-radius: 8px; padding: 22px 20px;
          color: var(--muted); font-size: 14px; }
@@ -300,6 +320,52 @@ def claim_trace_html(claims: list[dict]) -> str:
             f'source</span></div><div class="trace">{marks}</div>{"".join(items)}')
 
 
+KIND_LABEL = {
+    "funding": "Funding", "hiring": "Hiring", "product_launch": "Product launch",
+    "expansion": "Expansion", "leadership_change": "Leadership", "partnership": "Partnership",
+    "financials": "Financials", "other": "Other",
+}
+
+
+def render_research(r: dict) -> None:
+    sources = [parse_source(s) for s in r.get("sources", [])]
+    events = r.get("events", [])
+    label = (f"Research brief · {plural(len(events), 'finding')} from "
+             f"{plural(len(sources), 'source')}")
+    with st.expander(label):
+        found_col, src_col = st.columns([1, 1], gap="large")
+        with found_col:
+            if events:
+                rows = "".join(
+                    f'<div class="ev"><span class="ev-kind">{KIND_LABEL.get(e["kind"], "Other")}'
+                    f'</span>{E(e["summary"])}</div>' for e in events)
+            elif sources:
+                rows = ('<div class="rb-none">The search returned results, but none held a '
+                        'specific, quotable event about this company.</div>')
+            else:
+                rows = '<div class="rb-none">The search found nothing recent on this company.</div>'
+            hyps = r.get("hypotheses", [])
+            hyp_html = ""
+            if hyps:
+                hyp_html = ('<div class="rb-h rb-gap">Possible challenges <span>· inferred '
+                            'from the findings, not reported fact</span></div>'
+                            + "".join(f'<div class="hyp">{E(h)}</div>' for h in hyps))
+            st.markdown(f'<div class="rb-h">What the research found</div>{rows}{hyp_html}',
+                        unsafe_allow_html=True)
+        with src_col:
+            items = []
+            for s in sources:
+                title = (f'<a href="{E(s.url, quote=True)}" target="_blank" rel="noopener">'
+                         f'{E(s.title)}</a>' if s.url else E(s.title))
+                meta = " · ".join(x for x in (E(s.domain), E(s.date)) if x)
+                snip = f'<div class="src-snip">{E(s.snippet)}</div>' if s.snippet else ""
+                items.append(f'<div class="src"><div class="src-t">{title}</div>'
+                             f'<div class="src-meta">{meta}</div>{snip}</div>')
+            st.markdown(f'<div class="rb-h">Sources <span>· what the claims are checked '
+                        f'against</span></div>{"".join(items) or "<div class=rb-none>None.</div>"}',
+                        unsafe_allow_html=True)
+
+
 def render_lead(r: dict) -> None:
     kind, label = STATUS.get(r["status"], ("err", r["status"]))
     with st.container(border=True):
@@ -316,6 +382,8 @@ def render_lead(r: dict) -> None:
             if r.get("error_detail"):
                 with st.expander("Technical detail"):
                     st.code(r["error_detail"], language=None, wrap_lines=True)
+            if r.get("sources") or r.get("events"):
+                render_research(r)
             return
 
         facts = [E(r["email"]), plural(len(r.get("sources", [])), "source"),
@@ -336,10 +404,8 @@ def render_lead(r: dict) -> None:
 
         with trace_col:
             st.markdown(claim_trace_html(r.get("claims", [])), unsafe_allow_html=True)
-            with st.expander(f"Research brief · {plural(len(r.get('sources', [])), 'source')}"):
-                st.write(r.get("research", ""))
-                for src in r.get("sources", []):
-                    st.caption(src[:400])
+
+        render_research(r)
 
 
 def counts(results: list[dict]) -> dict:
@@ -374,7 +440,8 @@ def results_csv(results: list[dict]) -> str:
 def process(lead: dict) -> dict:
     base = {k: lead.get(k, "") for k in ("name", "role", "company", "email")}
     try:
-        research, sources = enrich_lead(lead)
+        found = research_company(lead)
+        research, sources = found.to_brief(), found.raw_sources
     except Exception as e:
         print(f"[enrich] {lead['company']}: {log_detail(e)}", file=sys.stderr)
         return {**base, "status": "ENRICH_ERROR", "draft": "",
@@ -384,9 +451,13 @@ def process(lead: dict) -> dict:
         gated = draft_with_gate(lead, research, sources)
     except Exception as e:
         print(f"[draft] {lead['name']}: {log_detail(e)}", file=sys.stderr)
+        # Research succeeded, so keep it: it's still worth reading while drafting is down.
         return {**base, "status": "DRAFT_ERROR", "draft": "",
                 "error": user_message(e, "drafting this email"),
-                "error_detail": log_detail(e)}
+                "error_detail": log_detail(e), "sources": sources,
+                "events": [{"kind": ev.kind, "summary": ev.summary}
+                           for ev in found.trigger_events],
+                "hypotheses": list(found.pain_hypotheses)}
 
     draft, verdict = gated.draft, gated.verdict
     return {
@@ -394,6 +465,8 @@ def process(lead: dict) -> dict:
         "claims_total": len(verdict.claims), "claims_grounded": len(verdict.grounded_claims),
         "critique": verdict.critique, "attempts": gated.attempts,
         "research": research, "sources": sources,
+        "events": [{"kind": e.kind, "summary": e.summary} for e in found.trigger_events],
+        "hypotheses": list(found.pain_hypotheses),
         "claims": [{"text": c.text, "grounded": c.grounded, "quote": c.source_quote}
                    for c in verdict.claims],
     }

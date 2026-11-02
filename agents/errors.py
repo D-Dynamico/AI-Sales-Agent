@@ -56,13 +56,32 @@ def retry_hint(exc: Exception) -> str:
     return match.group(1).rstrip(".") if match else ""
 
 
+def humanize_wait(hint: str) -> str:
+    """'18m7.344s' -> '19 min', '1h2m' -> '1 h 2 min', '45.2s' -> 'a minute'.
+
+    Rounded up: telling someone to retry a few seconds early just earns them another 429."""
+    import math
+    parts = {unit: value for value, unit in re.findall(r"([\d.]+)([hms])", hint or "")}
+    if not parts:
+        return ""
+    seconds = (float(parts.get("h", 0)) * 3600 + float(parts.get("m", 0)) * 60
+               + float(parts.get("s", 0)))
+    minutes = max(1, math.ceil(seconds / 60))
+    if minutes == 1:
+        return "a minute"
+    hours, mins = divmod(minutes, 60)
+    if hours:
+        return f"{hours} h {mins} min" if mins else f"{hours} h"
+    return f"{mins} min"
+
+
 def user_message(exc: Exception, step: str = "") -> str:
     """A short sentence safe to show anyone, including on a public page."""
     where = f" while {step}" if step else ""
     kind = classify(exc)
 
     if kind == "capacity":
-        wait = retry_hint(exc)
+        wait = humanize_wait(retry_hint(exc))
         when = f" Try again in about {wait}." if wait else " Try again shortly."
         return f"Model capacity for today is used up.{when}"
     if kind == "auth":

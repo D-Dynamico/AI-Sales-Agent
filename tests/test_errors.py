@@ -35,7 +35,7 @@ class TestClassification:
 class TestUserMessage:
     def test_capacity_message_is_calm_and_specific(self):
         message = user_message(RuntimeError(GROQ_TPD))
-        assert message == "Model capacity for today is used up. Try again in about 18m7.344s."
+        assert message == "Model capacity for today is used up. Try again in about 19 min."
 
     def test_capacity_message_leaks_nothing(self):
         """The failure this exists to prevent: account details on a public page."""
@@ -103,3 +103,12 @@ class TestLogDetail:
 def test_retry_hint_extraction():
     assert retry_hint(RuntimeError(GROQ_TPD)) == "18m7.344s"
     assert retry_hint(RuntimeError("no hint here")) == ""
+
+
+def test_wait_is_rounded_up_to_readable_minutes():
+    from agents.errors import humanize_wait
+    assert humanize_wait("18m7.344s") == "19 min"
+    assert humanize_wait("45.2s") == "a minute"
+    assert humanize_wait("1h2m3s") == "1 h 3 min"
+    assert humanize_wait("2h0m0s") == "2 h"
+    assert humanize_wait("") == ""
