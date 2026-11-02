@@ -9,7 +9,9 @@ os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
 os.environ["TAVILY_API_KEY"] = st.secrets["TAVILY_API_KEY"]
 
 from agents.enricher import enrich_lead
-from agents.errors import user_message
+import sys
+
+from agents.errors import log_detail, user_message
 from agents.pipeline import draft_with_gate
 from persona import PERSONA
 
@@ -158,6 +160,11 @@ if run_btn:
                         f'<p class="status-err">{user_message(e, "researching this company")}</p>',
                         unsafe_allow_html=True,
                     )
+                    # Redacted (no keys, org ids or billing links), so safe on a public page —
+                    # and without it a deployed failure is undiagnosable from the UI alone.
+                    with st.expander("Technical detail"):
+                        st.code(log_detail(e))
+                    print(f"[enrich] {company}: {log_detail(e)}", file=sys.stderr)
                     results.append({**lead, "status": "ENRICH_ERROR", "draft": ""})
                     continue
 
