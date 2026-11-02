@@ -213,3 +213,7 @@ plan.md
 
 # Generated research cache
 data/research_cache/
+
+# Design tooling output
+.taste-skill/
+.streamlit/secrets.toml
