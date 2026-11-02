@@ -10,10 +10,10 @@
 
 [sender]
 # Signs the emails. SENDER_NAME / SENDER_COMPANY.
-name = "Alex"
-company = "Alchemyst AI"
+name = "Rohan Verma"
+company = "Kriya AI"
 # The From: header. FROM_EMAIL.
-from_email = "alex@alchemyst.ai"
+from_email = "rohan@kriya.ai"
 
 [offering]
 # One line, in the second person, describing what you do for the recipient. This goes
