@@ -292,7 +292,7 @@ def claim_trace_html(claims: list[dict]) -> str:
         tag = "" if c["grounded"] else '<span class="tag">Not in sources · </span>'
         # Source quotes often arrive already wrapped in quote marks; strip them so the
         # page doesn't show doubled ones.
-        raw_quote = (c.get("quote") or "").strip().strip('"“”'').strip()
+        raw_quote = (c.get("quote") or "").strip().strip("\"'“”").strip()
         quote = f"<q>“{E(raw_quote[:220])}”</q>" if raw_quote else ""
         cls = "claim" if c["grounded"] else "claim miss"
         items.append(f'<div class="{cls}">{tag}{E(c["text"])}{quote}</div>')
