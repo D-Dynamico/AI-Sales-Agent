@@ -175,3 +175,54 @@ class TestBriefRendering:
 
         assert isinstance(brief, str) and "RAY launch" in brief
         assert isinstance(sources, list) and sources
+
+
+class TestEmptyExtractionRegression:
+    """Every company showed "No recent search results" because one invented `kind` label
+    failed validation for the whole response, and the resulting empty result was then cached
+    for a week despite the search having returned real articles."""
+
+    def test_unknown_kind_is_coerced_not_rejected(self):
+        event = TriggerEvent(kind="fundraising_advisors", summary="s", source_quote="q")
+        assert event.kind == "other"
+
+    def test_kind_label_is_normalised(self):
+        assert TriggerEvent(kind="Product Launch", summary="s").kind == "product_launch"
+
+    def test_fallback_json_with_invented_kind_still_parses(self):
+        from agents.structured import parse_json_block
+        text = ('{"trigger_events": [{"kind": "corporate_restructuring", "summary": "s", '
+                '"source_quote": "q"}], "pain_hypotheses": [], "confidence": 0.9}')
+        parsed = parse_json_block(text, enricher._ResearchExtraction)
+        assert len(parsed.trigger_events) == 1
+
+    def test_empty_extraction_from_real_sources_is_not_cached(self, monkeypatch, tmp_path, lead):
+        _patch_search(monkeypatch, FakeSearch())
+        counter = {"calls": 0}
+        _patch_structurer(monkeypatch, enricher._ResearchExtraction(), counter)
+        monkeypatch.setattr(enricher.cache, "CACHE_DIR", tmp_path)
+
+        enricher.research_company(lead)
+        enricher.research_company(lead)
+
+        assert counter["calls"] == 2, "a failed extraction must be retried, not served from cache"
+
+    def test_brief_distinguishes_unusable_results_from_no_results(self):
+        brief = ResearchResult(company="A", raw_sources=["x", "y"]).to_brief()
+        assert "Found 2 recent search results" in brief
+
+
+def test_stale_empty_cache_entry_is_not_served(monkeypatch, tmp_path, lead):
+    """Entries poisoned before the fix (sources, zero events) must trigger a fresh pass."""
+    monkeypatch.setattr(enricher.cache, "CACHE_DIR", tmp_path)
+    enricher.cache.set(lead["company"], ResearchResult(
+        company=lead["company"], raw_sources=["article"]).model_dump())
+    _patch_search(monkeypatch, FakeSearch())
+    counter = {"calls": 0}
+    _patch_structurer(monkeypatch, ResearchResult(
+        company="x", trigger_events=[TriggerEvent(summary="s", source_quote="q")]), counter)
+
+    result = enricher.research_company(lead)
+
+    assert counter["calls"] == 1
+    assert result.trigger_events

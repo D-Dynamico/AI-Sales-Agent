@@ -128,7 +128,9 @@ def research_company(lead: dict, budget_seconds: float = DEFAULT_BUDGET_SECONDS,
 
     if use_cache and company:
         cached = cache.get(company, ttl_seconds=ENRICHMENT_TTL_SECONDS)
-        if cached:
+        # Ignore entries written before empty extractions stopped being cached: sources with
+        # no events is a failed run, and serving it would keep the company stuck until TTL.
+        if cached and not (cached.get("raw_sources") and not cached.get("trigger_events")):
             return ResearchResult.model_validate(cached)
 
     queries = plan_lookups(lead)
@@ -167,7 +169,10 @@ def research_company(lead: dict, budget_seconds: float = DEFAULT_BUDGET_SECONDS,
     # enforced here so an unsupported "fact" never reaches the drafter in the first place.
     result.trigger_events = [e for e in result.trigger_events if (e.source_quote or "").strip()]
 
-    if use_cache and company:
+    # Only cache an empty extraction when there was nothing to extract from. Sources present
+    # but zero events is usually a transient structuring failure, and caching it pinned the
+    # company to "no research" for the full TTL even after the failure had cleared.
+    if use_cache and company and result.trigger_events:
         cache.set(company, result.model_dump())
     return result
 

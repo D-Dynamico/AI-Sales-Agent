@@ -2,7 +2,9 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from typing import get_args
+
+from pydantic import BaseModel, Field, field_validator
 
 TriggerKind = Literal[
     "funding", "hiring", "product_launch", "expansion", "leadership_change",
@@ -19,6 +21,19 @@ class TriggerEvent(BaseModel):
         default="",
         description="Verbatim text from the search results that reports this event",
     )
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _unknown_kind_is_other(cls, value):
+        """Models invent labels ("fundraising_advisors", "corporate_restructuring"). A strict
+        Literal made one such label fail validation for the *whole* response, discarding every
+        well-quoted event alongside it and leaving the brief empty. The label is the least
+        important part of an event, so coerce it rather than lose the event."""
+        if isinstance(value, str):
+            normalised = value.strip().lower().replace(" ", "_").replace("-", "_")
+            if normalised in get_args(TriggerKind):
+                return normalised
+        return "other"
 
 
 class ResearchResult(BaseModel):
@@ -50,6 +65,9 @@ class ResearchResult(BaseModel):
         supports them.
         """
         if not self.trigger_events:
+            if self.raw_sources:
+                return (f"Found {len(self.raw_sources)} recent search results, but no specific, "
+                        "quotable events could be extracted from them.")
             return "No recent search results were found for this company."
 
         lines = [f"- {e.summary}" for e in self.trigger_events]
