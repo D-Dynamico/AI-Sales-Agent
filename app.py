@@ -15,6 +15,18 @@ from agents.errors import log_detail, user_message
 from agents.pipeline import draft_with_gate
 from persona import PERSONA
 
+def _build_id() -> str:
+    """Short commit hash, so it's visible at a glance whether a deploy has picked up a fix."""
+    import subprocess
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                              text=True, timeout=5).stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
+
+
+BUILD = _build_id()
+
 # Page config
 st.set_page_config(
     page_title=f"AI Sales Agent · {PERSONA.company}",
@@ -101,7 +113,8 @@ col1, col2 = st.columns([1, 3])
 with col1:
     run_btn = st.button("Run Agent", type="primary", use_container_width=True)
 with col2:
-    st.caption("Powered by GPT-OSS 120B · Groq · Tavily Search · grounding-checked")
+    st.caption("Powered by GPT-OSS 120B · Groq · Tavily Search · grounding-checked"
+               f" · build {BUILD}")
 
 st.divider()
 

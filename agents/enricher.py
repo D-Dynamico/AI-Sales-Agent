@@ -128,9 +128,10 @@ def research_company(lead: dict, budget_seconds: float = DEFAULT_BUDGET_SECONDS,
 
     if use_cache and company:
         cached = cache.get(company, ttl_seconds=ENRICHMENT_TTL_SECONDS)
-        # Ignore entries written before empty extractions stopped being cached: sources with
-        # no events is a failed run, and serving it would keep the company stuck until TTL.
-        if cached and not (cached.get("raw_sources") and not cached.get("trigger_events")):
+        # Only results with events are worth serving. An empty entry is indistinguishable from
+        # a failed run — a search error used to be recorded as "0 sources" and then served for
+        # a week, so the deployed app never searched again and never showed the error.
+        if cached and cached.get("trigger_events"):
             return ResearchResult.model_validate(cached)
 
     queries = plan_lookups(lead)
@@ -145,10 +146,9 @@ def research_company(lead: dict, budget_seconds: float = DEFAULT_BUDGET_SECONDS,
         # Don't hand an empty context to the model — with nothing to summarise it will
         # happily produce a confident brief out of training data, which is the exact
         # failure this pipeline is supposed to prevent.
-        result = ResearchResult(company=company)
-        if use_cache and company:
-            cache.set(company, result.model_dump())
-        return result
+        # Not cached: an empty search is cheap to repeat (no LLM call), and caching it would
+        # pin a transient failure in place for the whole TTL.
+        return ResearchResult(company=company)
 
     extraction = _structure({
         "name": lead.get("name", ""),

@@ -226,3 +226,30 @@ def test_stale_empty_cache_entry_is_not_served(monkeypatch, tmp_path, lead):
 
     assert counter["calls"] == 1
     assert result.trigger_events
+
+
+def test_zero_source_cache_entry_is_not_served(monkeypatch, tmp_path, lead):
+    """The deployed app kept showing 0 sources with no error: an earlier failed search had
+    been cached as an empty result, so Tavily was never called again."""
+    monkeypatch.setattr(enricher.cache, "CACHE_DIR", tmp_path)
+    enricher.cache.set(lead["company"], ResearchResult(company=lead["company"]).model_dump())
+    search = FakeSearch()
+    _patch_search(monkeypatch, search)
+    _patch_structurer(monkeypatch, ResearchResult(
+        company="x", trigger_events=[TriggerEvent(summary="s", source_quote="q")]))
+
+    result = enricher.research_company(lead)
+
+    assert search.calls > 0
+    assert result.trigger_events
+
+
+def test_empty_search_is_not_cached(monkeypatch, tmp_path, lead):
+    monkeypatch.setattr(enricher.cache, "CACHE_DIR", tmp_path)
+    search = FakeSearch(payload={"results": []})
+    _patch_search(monkeypatch, search)
+
+    enricher.research_company(lead)
+    enricher.research_company(lead)
+
+    assert not list(tmp_path.glob("*.json"))
